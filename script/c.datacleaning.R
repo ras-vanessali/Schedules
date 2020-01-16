@@ -73,6 +73,7 @@ EOMList<-seq(as.Date('2019-03-01'),length=20,by='1 month') -1
 str <-sort(c(0:9,0:9))
 CatDtUse <-data.frame(EOMList,str)
 indexUse<- CatDtUse[CatDtUse$EOMList==publishDate,]$str
+
 ###split join level
 split.joinlevel<-function(input,dataload,brwtype){
   select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
@@ -213,13 +214,13 @@ Datainput_BothBrw<-split.joinlevel(InB,uploadData,'brw') %>%
 
 
 ### combine regular and auction borrow - regression use data 
-Data_all <-rbind(Datainput,Datainput_Ret,Datainput_Auc,CatListing)
+Data_comb <-rbind(Datainput,Datainput_Ret,Datainput_Auc,CatListing)
 
 ###################################################################################################################
 ############ Run cooks distance using exponential regression for auction data that remove leverage points #########
 ###################################################################################################################
 
-SaleDtAuc_cd<-subset(Data_all,Data_all$SaleType=="Auction") %>% 
+SaleDtAuc_cd<-subset(Data_comb,Data_comb$SaleType=="Auction") %>% 
   filter(ModelYear >= ifelse(CategoryId %in% ListingIds,dep_endyr, ext_botYr) & ModelYear <=topyear) %>% 
   distinct()
 
@@ -245,11 +246,25 @@ leverage.pts<-subset(do.call(rbind,leveragelist),Age<3)$CompId
 
 
 ## remove leverage points
-SaleDtAuc <-SaleDtAuc_cd %>% filter(!CompId %in% leverage.pts)
+#SaleDtAuc <-SaleDtAuc_cd %>% filter(!CompId %in% leverage.pts)
 ##update data_all
-Data_all <- Data_all %>% filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
-l<-Data_all_plot %>% filter(SaleType=='Listing')
+Data_clean <- Data_comb %>% filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 
+
+## Use recent data
+Data.count<-Data_clean %>%
+  group_by(SaleType,Schedule,ModelYear) %>%
+  arrange(desc(SaleDate)) %>%
+  mutate(rowNum=row_number())
+
+Data.count3m <- Data.count %>%
+  filter(as.Date(EffectiveDate)>=thirdLastM & rowNum ==threshold_rec.calc) %>%
+  select(SaleType,Schedule,ModelYear)
+
+Data_all <- rbind(data.frame(merge(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(as.Date(EffectiveDate)>=thirdLastM))
+                      ,data.frame(anti_join(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(rowNum<=25)))
+  
+  
 ### combine regular and borrow data for plots use only & exclude leverage points
 Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
   filter(!(SaleType =='Auction' & CompId %in% leverage.pts))

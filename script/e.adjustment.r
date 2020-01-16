@@ -30,15 +30,15 @@ SlopJoinRet<-SchedTbFull %>% mutate(SlopeRet = indexcap)
 
 ############################ 4.C split sale data to auction and retail -- Validation Data
 
-summarySM = Data_all %>%
+summarySM = Data_clean %>%
   group_by(EffectiveDate) %>%
   summarise(n=n())
 SM<-data.frame(summarySM[,1])
 
 ### Data use for adjustment
-SaleDtAuc_adjUse<-subset(Data_all,Data_all$SaleType=="Auction" & YearFlag=='AdjusUseYr') 
+SaleDtAuc_adjUse<-subset(Data_clean,Data_clean$SaleType=="Auction" & YearFlag=='AdjusUseYr') 
 
-SaleDtRet_adjUse<-data.frame(subset(Data_all,Data_all$SaleType!="Auction" & YearFlag=='AdjusUseYr')) %>%
+SaleDtRet_adjUse<-data.frame(subset(Data_clean,Data_clean$SaleType!="Auction" & YearFlag=='AdjusUseYr')) %>%
   mutate(SaleType ='Retail')
 
 ########################### 4.D Calcualte SP/value to adjust the curve 
@@ -86,7 +86,7 @@ shiftRet.apply<-merge(OutRegression_Ret,Ret.capshift,by=c('Schedule','ModelYear'
 ########################### Calculate the recency scale factors #################
 #### recency calculation: if N(recent 1 month) > m, use 1 month; else use most recent n til 3 months
 ## join the raw data to regression output
-join.rec.ret<-merge(data.frame(Data_all) %>% filter(SaleType !='Auction'), OutRegression_Ret,by=c('Schedule','ModelYear'))%>% 
+join.rec.ret<-merge(data.frame(Data_clean) %>% filter(SaleType !='Auction'), OutRegression_Ret,by=c('Schedule','ModelYear'))%>% 
   filter(as.Date(EffectiveDate)>=thirdLastM,ModelYear>=botyear) %>%
   mutate(power = abs(month(EffectiveDate)-month(publishDate)),
          fmv_shiftLim = fmv/(0.99^power)) 
@@ -178,7 +178,7 @@ shiftAuc.apply<-merge(OutRegression_Auc,Auc.capshift,by=c('Schedule','ModelYear'
 ########################### Calculate the recency scale factors #################
 #### recency calculation: if N(recent 1 month) > m, use 1 month; else use most recent n til 3 months
 ## join the raw data to regression output
-join.rec.auc<-merge(data.frame(Data_all) %>% filter(SaleType !='Retail'), OutRegression_Auc,by=c('Schedule','ModelYear'))%>% 
+join.rec.auc<-merge(data.frame(Data_clean) %>% filter(SaleType !='Retail'), OutRegression_Auc,by=c('Schedule','ModelYear'))%>% 
   filter(as.Date(EffectiveDate)>=thirdLastM,ModelYear>=botyear) %>%
   mutate(power = abs(month(EffectiveDate)-month(publishDate)),
          flv_shiftLim = flv/(0.99^power))

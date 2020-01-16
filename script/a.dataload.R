@@ -236,7 +236,7 @@ uploadData<-sqlQuery(channel,"
 
 ###################################### Input listing data for Cranes #########################################
 channel<-odbcConnect(DBserver)
-uploadListing<-sqlQuery(channel,"
+uploadListing<-sqlQuery(channel," SET NOCOUNT ON
 Declare @PublishDate DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-1, -1) AS date)
 Declare @EOpriorM DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
 
