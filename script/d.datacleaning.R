@@ -1,73 +1,4 @@
 
-#######################################################################################################################
-##################################################### Build Functions  ################################################
-#######################################################################################################################
-
-### build a function to do the minimum delta calculation 
-minimumDelta <- function(deltaA,deltaB,move){
-  delta = deltaA-deltaB
-  result = ifelse(delta > Min_delta,(delta - Min_delta) * (move/delta),0)
-  return(result)
-}
-
-
-### build a function to check if in range. 
-WithinRange <- function(checkPoint, Max, Min){
-  result = ifelse(checkPoint>Max, 'Max', ifelse(checkPoint<Min,'Min',''))
-  return(result)
-}
-
-### build a function to do MoM limitation for schedules
-MoMlimitFunc <- function(last_month,current_month,limitUp,limitDn){
-  upline = last_month * (1+limitUp)
-  btline = last_month / (1+limitDn)
-  result = pmin(upline,pmax(btline,current_month))
-  return(result)
-}
-
-### build a function to do MoM limitation for depreciation and appreciation
-MoMlimit_depappr <- function(last_month,current_month,limit){
-  upline = last_month + limit
-  btline = last_month - limit
-  result = pmin(upline,pmax(btline,current_month))
-  return(result)
-}
-
-
-### build a function to calculate the newest year cap by effective date
-NewYr_CapFunc<- function(inputcaps){
-  age = year(publishDate) - topyear + (month(publishDate)-6)/12
-  monthDiff = age *12
-  cap = inputcaps *(1 - capMonthpct)^monthDiff
-  return(cap)
-}
-
-
-### build a function to calcualte the extended years' schedule using depreciation and appreciation rate
-depr_appr_sched <- function(type, endyrSched, rate, age_gap){
-  if (type == 'Dep'){
-    newSched = endyrSched * (1-rate)^age_gap
-  }
-  else if (type=='App'){
-    newSched = endyrSched * (1+rate)^age_gap
-  }
-  else{newSched = ''}
-  return(newSched)
-}
-
-
-### build a function for cranes special input factors
-cranes_value <-function(Schedule,value,value_crane){
-  if(str_detect(Schedule,'Cranes')){
-    value_return = value_crane
-  }
-  else{value_return = value}
-  return(value_return)
-}
-
-
-
-
 ### This process starts from effective date 2019-02-28 and will end in 2020-09-30. ###
 EOMList<-seq(as.Date('2019-03-01'),length=20,by='1 month') -1
 str <-sort(c(0:9,0:9))
@@ -118,15 +49,14 @@ return(rbind(CatData,SubcatData,MakeData))}
 
 ###################################################################################################################
 ###################################################################################################################
-############################################# Data Merge & Clean ##################################################
+######################################## Make Data Merge & Clean ##################################################
 ###################################################################################################################
 ###################################################################################################################
-
+if(CountryCode == 'USA'){
 ####### Prepare the candidate output list for Part 3 schedules ########
 ####### ClassId list = All - Out - OutR ########
 Out_make <- anti_join(AllClass,comb_Out %>% select(ClassificationId),by='ClassificationId') %>%
   select(ClassificationId,CategoryName,CategoryId,SubcategoryName,SubcategoryId,MakeName,MakeId)
-dim(comb_Out)
 
 ######## Join MList with Out + OutR tab (SubcatGroup) to get the CS - Schedule map ##########
 ### Subset of Out +OutR tab
@@ -143,7 +73,7 @@ joinmap_make <-merge(rbind(CatMakemap,SubcatMakemap),ReportGrp,by='CategoryId')
 
 ######## Prepare the output mapping table for all makes schedules ########
 make_output<-merge(joinmap_make,Out_make,by=c('CategoryId','SubcategoryId')) %>% filter(!is.na(MakeId))
-
+}
 
 ###################################################################################################################
 ###################################################################################################################
@@ -161,7 +91,8 @@ Datainput<-split.joinlevel(In,uploadData,'') %>%
   mutate(CompId = factor(CompId)) %>%
   group_by(Schedule,SaleType) %>%
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
-  
+
+if(CountryCode =='USA'){
 ### Listing - Join in Category level 
 CatListing <- revised_listing %>%
   ### Used for Feb to Nov 2019: bring in caterpillar data 
@@ -172,7 +103,7 @@ CatListing <- revised_listing %>%
   group_by(Schedule) %>%
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
 
-
+}
 ###################################################################################################################
 ############################################# Part 2: Auction Borrow  #############################################
 ###################################################################################################################
@@ -185,8 +116,7 @@ aucBorrow_all<-split.joinlevel(InR,uploadData,'brw') %>%
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
 
 ### Combine C, CS and CSM levels of data into one & exclude bad data
-Datainput_Ret<-aucBorrow_all %>%
-  filter(SaleType=='Retail')
+Datainput_Ret<-aucBorrow_all %>% filter(SaleType=='Retail')
 
 
 ###################################################################################################################
@@ -199,8 +129,7 @@ retBorrow_all<-split.joinlevel(InA,uploadData,'brw') %>%
   group_by(Schedule,SaleType) %>%
   filter(SPvalue <= ave(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= ave(SPvalue) - stdInd*sd(SPvalue)) 
 
-Datainput_Auc<-retBorrow_all %>%
-  filter(SaleType=='Auction')
+Datainput_Auc<-retBorrow_all %>% filter(SaleType=='Auction')
 ###################################################################################################################
 ############################################## Part 4: Both Side Borrow  #############################################
 ###################################################################################################################
@@ -214,7 +143,11 @@ Datainput_BothBrw<-split.joinlevel(InB,uploadData,'brw') %>%
 
 
 ### combine regular and auction borrow - regression use data 
-Data_comb <-rbind(Datainput,Datainput_Ret,Datainput_Auc,CatListing)
+if (CountryCode == 'USA'){
+  Data_comb <-rbind(Datainput,Datainput_Ret,Datainput_Auc,CatListing)
+} else{
+  Data_comb <-rbind(Datainput,Datainput_Ret,Datainput_Auc)
+}
 
 ###################################################################################################################
 ############ Run cooks distance using exponential regression for auction data that remove leverage points #########
@@ -266,5 +199,11 @@ Data_all <- rbind(data.frame(merge(Data.count,Data.count3m,by=c('SaleType','Sche
   
   
 ### combine regular and borrow data for plots use only & exclude leverage points
-Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
-  filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
+if (CountryCode == 'USA'){
+  Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
+    filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
+} else{
+  Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all) %>% 
+    filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
+}
+

@@ -85,7 +85,7 @@ for (i in 1:nrow(adjusted_Ret)){
 
 
 adjusted_Auc<-recencyAuc.apply
-head(adjusted_Auc)
+
 ####################################### 5.B Auction ############################################
 
 ## column 9: set the upper bound based on the year newer 
@@ -415,7 +415,8 @@ bindCaptb<-rbind(capSched_cap,capSched_keep) %>%
 ############################# 7.A CHANNELS - prevent cross over: auction side with lower recovery than retail side
 
 ####### Apply the logic of age younger or older than 5 to adjust fmv or flv 
-checkChannel<-bindCaptb %>%
+if (CountryCode == 'USA'){
+  checkChannel<-bindCaptb %>%
   mutate(rate = Adjfmv/Adjflv,
          YTD = ModelYear)%>%
   filter (rate < 1+capChannel) %>%
@@ -423,6 +424,21 @@ checkChannel<-bindCaptb %>%
   mutate(ageGroup = ifelse(yearAge=='check',ifelse(UnitsRet<retBelieve,'elder',ifelse(UnitsRet>=UnitsAuc,'newer','elder')),yearAge)) %>%
   mutate(schedule = ifelse(ageGroup=='elder',Adjflv*(1+capChannel),Adjfmv/(1+capChannel))) %>%
   select(Schedule,ModelYear,ageGroup,schedule)
+  
+} else{
+  checkChannel<-bindCaptb %>%
+  mutate(rate = Adjfmv/Adjflv,
+         YTD = ModelYear)%>%
+  filter (rate < 1+capChannel) %>%
+  mutate(yearAge = ifelse(str_detect(Schedule,'RbA'),"newer","elder")) %>%
+  mutate(ageGroup = ifelse(yearAge=='check',ifelse(UnitsRet<retBelieve,'elder',ifelse(UnitsRet>=UnitsAuc,'newer','elder')),yearAge)) %>%
+  mutate(schedule = ifelse(ageGroup=='elder',Adjflv*(1+capChannel),Adjfmv/(1+capChannel))) %>%
+  select(Schedule,ModelYear,ageGroup,schedule)
+
+}
+
+
+
 
 assignVal<-merge(bindCaptb,checkChannel,by=c("Schedule","ModelYear"),all.x =T)
 assignVal[is.na(assignVal)] <- 0

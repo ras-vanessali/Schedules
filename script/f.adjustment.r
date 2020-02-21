@@ -46,7 +46,7 @@ SaleDtRet_adjUse<-data.frame(subset(Data_clean,Data_clean$SaleType!="Auction" & 
 ###################################### Retail  ###################################### 
 ## Base adjusters
 shiftRet.count<-merge(SaleDtRet_adjUse,OutRegression_Ret,by=c("Schedule","ModelYear")) %>%
-  mutate(power = abs(month(EffectiveDate)-month(publishDate)),
+  mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
          fmv.1 = fmv/(0.99^power)) %>%
   group_by(Schedule,ModelYear) %>%
   arrange(desc(SaleDate)) %>%
@@ -87,8 +87,8 @@ shiftRet.apply<-merge(OutRegression_Ret,Ret.capshift,by=c('Schedule','ModelYear'
 #### recency calculation: if N(recent 1 month) > m, use 1 month; else use most recent n til 3 months
 ## join the raw data to regression output
 join.rec.ret<-merge(data.frame(Data_clean) %>% filter(SaleType !='Auction'), OutRegression_Ret,by=c('Schedule','ModelYear'))%>% 
-  filter(as.Date(EffectiveDate)>=thirdLastM,ModelYear>=botyear) %>%
-  mutate(power = abs(month(EffectiveDate)-month(publishDate)),
+  filter(as.Date(EffectiveDate)>=thirdLastM & ModelYear>=botyear & ModelYear<=topyear) %>%
+  mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
          fmv_shiftLim = fmv/(0.99^power)) 
 
 ## count how many rows(sales) in each schedules
@@ -113,14 +113,15 @@ RPSF_ret.cal <- rbind(data.frame(merge(RPSF_ret.count,RPSF_ret.calc1m,by='Schedu
   select(Schedule,f.recency.ret)
 
 ## join to get the full list (no recency data get factor = 1), partial move factor by schedule, modelyear
-RPSF_ret.full<-merge(SchedFullList %>% filter(!is.na(RetailNewYrMax)) %>% select(Schedule),RPSF_ret.cal,by='Schedule',all.x=TRUE) %>%
-  mutate(f.recency.ret = ifelse(is.na(f.recency.ret),1,f.recency.ret))
+RPSF_ret.full<-merge(merge(SchedFullList %>% filter(!is.na(RetailNewYrMax)) %>% select(Schedule),RPSF_ret.cal,by='Schedule',all.x=TRUE) %>%
+  mutate(f.recency.ret = ifelse(is.na(f.recency.ret),1,f.recency.ret)),model_year)
 
-recFact_ret<- merge(join.rec.ret %>% group_by(Schedule,ModelYear) %>% summarise(n=n()) %>%
-                      ungroup() %>%
-                      complete(Schedule,ModelYear,
-                               fill = list(n = 0))
-                    ,RPSF_ret.full,by='Schedule') %>%
+
+recFact_ret<- merge(join.rec.ret %>% group_by(Schedule,ModelYear) %>% summarise(n=n())
+                 
+                    ,RPSF_ret.full,by=c('Schedule','ModelYear'),all.y=TRUE) %>%
+  complete(Schedule,ModelYear,
+           fill = list(n = 0)) %>%
   mutate(partialf.recency.ret = (1-pmin(1,n/threshold_adj))*(f.recency.ret-1)+1) %>% select(-n)
 
 
@@ -137,7 +138,7 @@ recencyRet.apply <- merge(shiftRet.apply,recFact_ret,by=c('Schedule','ModelYear'
 ###################################### Auction  ###################################### 
 ## Base adjusters
 shiftAuc.count<-merge(SaleDtAuc_adjUse,OutRegression_Auc,by=c("Schedule","ModelYear")) %>%
-  mutate(power = abs(month(EffectiveDate)-month(publishDate)),
+  mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
          flv.1 = flv/(0.99^power)) %>%
   group_by(Schedule,ModelYear) %>%
   arrange(desc(SaleDate)) %>%
@@ -179,8 +180,8 @@ shiftAuc.apply<-merge(OutRegression_Auc,Auc.capshift,by=c('Schedule','ModelYear'
 #### recency calculation: if N(recent 1 month) > m, use 1 month; else use most recent n til 3 months
 ## join the raw data to regression output
 join.rec.auc<-merge(data.frame(Data_clean) %>% filter(SaleType !='Retail'), OutRegression_Auc,by=c('Schedule','ModelYear'))%>% 
-  filter(as.Date(EffectiveDate)>=thirdLastM,ModelYear>=botyear) %>%
-  mutate(power = abs(month(EffectiveDate)-month(publishDate)),
+  filter(as.Date(EffectiveDate)>=thirdLastM & ModelYear>=botyear & ModelYear<=topyear) %>%
+  mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
          flv_shiftLim = flv/(0.99^power))
 
 ## count how many rows(sales) in each schedules
@@ -205,16 +206,14 @@ RPSF_auc.calc<- rbind(data.frame(merge(RPSF_auc.count,RPSF_auc.calc1m,by='Schedu
   select(Schedule,f.recency.auc)
 
 ## join to get the full list (no recency data get factor = 1), partial move factor by schedule, modelyear
-RPSF_auc.full<-merge(SchedFullList %>% filter(!is.na(AuctionNewYrMax)) %>% select(Schedule),RPSF_auc.calc,by='Schedule',all.x=TRUE) %>%
-  mutate(f.recency.auc = ifelse(is.na(f.recency.auc),1,f.recency.auc))
+RPSF_auc.full<-merge(merge(SchedFullList %>% filter(!is.na(AuctionNewYrMax)) %>% select(Schedule),RPSF_auc.calc,by='Schedule',all.x=TRUE) %>%
+  mutate(f.recency.auc = ifelse(is.na(f.recency.auc),1,f.recency.auc)),model_year)
 
-recFact_auc<- merge(join.rec.auc %>% group_by(Schedule,ModelYear) %>% summarise(n=n()) %>%
-                      ungroup() %>%
-                      complete(Schedule,ModelYear,
-                               fill = list(n = 0))
-                    ,RPSF_auc.full,by='Schedule') %>%
+recFact_auc<- merge(join.rec.auc %>% group_by(Schedule,ModelYear) %>% summarise(n=n())
+                    ,RPSF_auc.full,by=c('Schedule','ModelYear'),all.y=TRUE) %>%
+  complete(Schedule,ModelYear,
+           fill = list(n = 0)) %>%
   mutate(partialf.recency.auc = (1-pmin(1,n/threshold_adj))*(f.recency.auc-1)+1) %>% select(-n)
-
 
 
 #write.csv(RPSF_ret,'0114recency_retail.csv')

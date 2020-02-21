@@ -17,49 +17,93 @@ library(lubridate)
 library(readxl)
 library(stringr)
 
-## publish date
-publishDate<-Sys.Date() - days(day(Sys.Date()))
-#publishDate = as.Date('2019-08-31')
-thirdLastM<-publishDate - days(day(publishDate)) - days(day(publishDate - days(day(publishDate))))
-
-## DB Server
-#DBserver = 'production' 
-DBserver = 'rasquery'
-
-scripts_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules-USNA/script"
-setwd(scripts_path)  
+# country
+#CountryCode = 'GBR'
+CountryCode = 'USA'
+# db enviroment & connect
+DBserver = 'production' 
+#DBserver = 'rasquery'
 
 
-
-## Read the R script
-runa<-parse('a.dataload.r')
-runb<-parse('b.listings.r')
-runc<-parse('c.datacleaning.r')
-rund<-parse('d.buildmodel.r')
-rune<-parse('e.adjustment.r')
-runf<-parse('f.violationcheck.r')
-rung<-parse('g. depreciation&monthlimit.r')
-runh<-parse('h.makeschedules.r')
-runi<-parse('i.upload&plots.r')
-
-
-
-## file path & read file name
+## read input excel file and create a plot for storing the plots
 file_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules-USNA/doc"
 setwd(file_path)  
-excelfile = '20200109 SchedulesManagement.xlsx'
+excelfile = '20200211 SchedulesManagement.xlsx'
 plotFolder = paste("Plots",Sys.Date())
 dir.create(plotFolder)
 
 
+## set directory of r scripts
+scripts_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules-USNA/script"
+setwd(scripts_path) 
+runa<-parse('a.input&func.r')
+eval(runa)
+setwd(scripts_path) 
+runb<-parse('b.sqlQueries.r')
+eval(runb)
+
+channel<-odbcConnect(DBserver)
+## run sql queries
+if (CountryCode == 'USA'){
+  publishDate <- Sys.Date() - days(day(Sys.Date()))
+  uploadData <- sqlQuery(channel,US_dataload)
+  uploadListing <- sqlQuery(channel,Listing_dataload)
+  MakeAdjData <- sqlExecute(channel,MakeAdjust_dataload,CategoryId, fetch=T)
+  LastMonth_Sched <- sqlQuery(channel,LM_USA_load)
+  LastMonth_depr <- sqlQuery(channel,Last_depr_USAload)
+  AllClass <- sqlQuery(channel,AllClass)
+  ReportGrp <-sqlQuery(channel,ReportGrp)
+  
+} else{
+  publishDate <- Sys.Date() - days(day(Sys.Date())) - days(day(Sys.Date() - days(day(Sys.Date()))))
+  uploadData <- sqlQuery(channel,UK_dataload)
+  #listingData <- sqlQuery(channel,Listing_dataload)
+  #MakeAdjData <- sqlQuery(channel,MakeAdjust_dataload,,CategoryId, fetch=T)
+  LastMonth_Sched <- sqlQuery(channel,LM_UK_load)
+  LastMonth_depr <- sqlQuery(channel,Last_depr_UKload)
+  AllClass <- sqlQuery(channel,AllClass)
+}
+
+#publishDate = as.Date('2019-08-31')
+thirdLastM<-publishDate - days(day(publishDate)) - days(day(publishDate - days(day(publishDate))))
+
+setwd(scripts_path) 
+## Read the R script
+
+runc<-parse('c.listings.r')
+rund<-parse('d.datacleaning.r')
+rune<-parse('e.buildmodel.r')
+runf<-parse('f.adjustment.r')
+rung<-parse('g.violationcheck.r')
+runh<-parse('h. depreciation&monthlimit.r')
+runi<-parse('i.makeschedules.r')
+runj<-parse('j.upload&plots.r')
+
+
+
+
+
+
 ## Execute
 ## USA
-eval(runa)
-eval(runb)
-eval(runc)
-eval(rund)
-eval(rune)
-eval(runf)
-eval(rung)
-eval(runh)
-eval(runi)
+if (CountryCode == 'USA'){
+  eval(runc)
+  eval(rund)
+  eval(rune)
+  eval(runf)
+  eval(rung)
+  eval(runh)
+  eval(runi)
+  setwd(file_path)  
+  eval(runj)
+} else{
+  
+  eval(rund)
+  eval(rune)
+  eval(runf)
+  eval(rung)
+  eval(runh)
+  
+  setwd(file_path)  
+  eval(runj)
+}

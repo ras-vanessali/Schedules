@@ -4,7 +4,7 @@
 ###################################################################################################################
 ###################################################################################################################
 ### join the make map to the calcualted CSM sp/value
-makeAdj_calDt<-merge(joinmap_make,In_makeAdj,by=c('CategoryId','SubcategoryId'))
+makeAdj_calDt<-merge(joinmap_make,MakeAdjData,by=c('CategoryId','SubcategoryId'))
 
 ### calcualte the average sp/value (make adjusters) by schedule and make
 MakeSFcalc_Sched<-makeAdj_calDt %>%
@@ -88,15 +88,15 @@ MakeSF <- merge(joinMakeOut,yrAdj) %>% arrange(Schedule,ClassificationId,ModelYe
 ################## 12.A Join the make adjusters back to cat/subcat schedules and calculate base make level schedules
 
 ### calculate the makelevel schedules
-join_MakeAdj <- merge(ScheduleOut,MakeSF,by=c('Schedule','ModelYear'),all.y=T) %>%
+joMakeAdjData <- merge(ScheduleOut,MakeSF,by=c('Schedule','ModelYear'),all.y=T) %>%
   mutate(fmv_make = Adjfmv*Retail_Yr,
          flv_make = Adjflv*Auction_Yr) %>%
   select(Schedule,ClassificationId, CategoryId,SubcategoryName, MakeId, MakeName,ModelYear,
          Retail,Auction,Retail_Yr,Auction_Yr,Adjfmv,Adjflv,fmv_make,flv_make)%>%
   arrange(Schedule,ClassificationId,MakeId,ModelYear)
 
-#write.csv(join_MakeAdj,'20190313 MakeSchedules.csv')
-AllTmake <- join_MakeAdj %>% select(Schedule,ClassificationId, CategoryId,SubcategoryName, MakeName,MakeId, ModelYear, fmv_make, flv_make)
+#write.csv(joMakeAdjData,'20190313 MakeSchedules.csv')
+AllTmake <- joMakeAdjData %>% select(Schedule,ClassificationId, CategoryId,SubcategoryName, MakeName,MakeId, ModelYear, fmv_make, flv_make)
 
 
 ###################################################################################################################
@@ -107,7 +107,7 @@ AllTmake <- join_MakeAdj %>% select(Schedule,ClassificationId, CategoryId,Subcat
 ################################################################## MoM limit  ################################################################## 
 
 
-#MoMlimit<-merge(AllTmake,LastMonth_import %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
+#MoMlimit<-merge(AllTmake,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
 #  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
 #         limit_flv = ifelse(is.na(CurrentFlv),flv_make,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM))) 
 
@@ -117,7 +117,7 @@ AllTmake <- join_MakeAdj %>% select(Schedule,ClassificationId, CategoryId,Subcat
 
 
 ## Limit by last month 
-lastM_schedule_make<-LastMonth_import %>%
+lastM_schedule_make<-LastMonth_Sched %>%
   filter(ModelYear>=botyear-1 & ModelYear <= topyear) %>%
   select(ClassificationId,ModelYear,CurrentFmv, CurrentFlv) %>%
   distinct()
@@ -143,7 +143,7 @@ AllTmake_new <- merge(AllTmake,RebaseTemp_2make,by=c('ClassificationId','ModelYe
   select(-Adj2010Fmv,-Adj2010Flv)
 
 
-MoMlimit<-merge(AllTmake_new,LastMonth_import %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
+MoMlimit<-merge(AllTmake_new,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
   mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
          limit_flv = ifelse(is.na(CurrentFlv),flv_make,ifelse(CategoryId ==2616,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM)))) 
 

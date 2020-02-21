@@ -1,155 +1,12 @@
-CountryCode = 'USA'
-
-#################### The upload file consists of 4 parts #####################
-# Part 1: regular schedules - Out
-# Part 2: auction borrow schedules - OutR
-# Part 3: make level schedules (scaled with make adjusters)
-# Part 4: tier 3 make schedules
-
-scal=3
-## Model Year in use
-topyear = 2019 ## top model year
-comingyr = topyear+1 ## top model year pulling from db, used for appreciation
-botyear = topyear-9 ## bottom model year
-ext_botYr = topyear-11 ## bottom model year of putting in regression
-dep_endyr = topyear-15 ## bottom model year pulling from db, used for depreciation
-
-## at what age joint the logistic and exponential 
-age_joint = 7
-
-## set the minimum gap between adjacent years generally, some specific cases may not use this value
-indexcap = 0.0300
-
-## set the limit movement from last month
-limUp_MoM = 0.0400
-limDw_MoM = 0.0600
-limDw_MoM_spec = 0.1500
-
-## thresholds of #datapoints - use to move schedules from regression
-#t1<-3 t2<-6 t3<-10 t4<-15 t5<-21 t6<-28
-threshold_adj = 25
-threshold_brw = 30
-threshold_recency = 40
-threshold_rec.calc = 25
-
-
-recency_cap = 0.25
-## set the minimum gap between two channels
-capChannel = 0.10
-## use for channel confict - distinguish older and newer age
-chanyr = 3
-## use for channel check who govern in middel years. retail data >5, Auction governs
-retBelieve = 5 
-
-
-## newest year in auction have to be in the range
-capMonthpct = 0.01
-
-fixyr_gap <- function(Schedule){
-  fixyr = ifelse(str_detect(Schedule,'Cranes'), 5, 3)
-  return(fixyr)
-}
-
-## set the bounds of could-be lowest and highest schedule
-UpperB = 3
-LowerB = 0
-
-
-## logistic growth regression slope minimum
-slopecap = -1.5
-
-## caps of appreciation and depreciation
-app_yrgap = 3.00
-appBound_upp = 0.15
-appBound_bot = 0.05
-appBound_na = 0.10
-
-depBound_upp = 0.06
-depBound_upp_crane = 0.10
-depBound_bot = 0.020
-depBound_na = 0.040
-
-DeprMoMLimit = 0.002
-ApprMoMLimit = 0.01
-## set the index of standard deviation side of mean 
-stdInd =2
-
-
-## Make adjusters caps
-makeSFupp = 1.3
-makeSFbot = 0.7
-
-## Make adjustment channel gap 
-Min_delta =0.1
-
-## threshold of data points for make adjusters
-thredtpts = 15
-
-## use for phase in factors on each model year
-phaseinAge = 6
-phaseinFactor =0.15
-
-## Last two years in schedules - limit the shift
-lastyr_1 = 0.05
-lastyr_2 = 0.10
-
-
-## use for the second end year - prevend rebasing jump
-x = 0.05
-## use for the first end year violate second end year
-endYrRate = 0.02
-
-## Global category list
-GlobalList<-c(313,	6,	2509,	15,	29,	315,	360,	451,	316,	362)
-#Articulating Booms,	Backhoe Loaders,	Compact Track Loaders,	Dozers,	Excavators,	Scissor Lifts,	Skid Steer Loaders,	Telehandlers,	Telescopic Booms,	Wheel Loaders
-ListingIds<-c(2605,2603,2608,2604,2606,2577,19,2607) 
-#'Carry-Deck Cranes','Rough-Terrain Cranes','All-Terrain Cranes','Truck-Mounted Cranes','Crawler Cranes'
-GlobalClassId=1
-
-
-
-################################################# Read tabs in file ##########################################################
-### load the inputfeed file
-In<-data.frame(read_excel(excelfile,sheet='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule)
-InR<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
-  filter(BorrowType=='RetailBorrowAuction')
-InA<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
-  filter(BorrowType=='AuctionBorrowRetail')
-InB<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
-  filter(BorrowType=='BorrowBoth')
-In.brwcrane<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
-  filter(str_detect(Schedule,'Crane'))
-
-### load the application file
-Out<-data.frame(read_excel(excelfile,sheet='Out')) %>% filter(Country==CountryCode)
-OutR<-data.frame(read_excel(excelfile,sheet='OutR')) %>% filter(Country==CountryCode)
-
-### Application tab
-comb_Out<-rbind(Out %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId, Level2,Plot),OutR %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId,Level2,Plot))
-
-### load the Sched file
-Sched<-data.frame(read_excel(excelfile,sheet='Sched')) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax) 
-SchedR<-data.frame(read_excel(excelfile,sheet='SchedR')) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax,BorrowSchedule,BorrowType) 
-SchedFullList<-rbind(Sched,SchedR %>% select(-BorrowSchedule,-BorrowType))
-
-### load make adjustments related tabs
-Mlist<-data.frame(read_excel(excelfile,sheet='MList')) %>% filter(Country==CountryCode)
-#Make3<-data.frame(read_excel(excelfile,sheet='Make3')) %>% filter(Country==CountryCode) %>% select(MakeId, Adjuster)
-
-Categ_fullLs <- rbind(In['CategoryId'],InR['CategoryId'],InA['CategoryId']) %>% distinct()
 
 ###################################################################################################################
 ###################################################################################################################
-##################################### INPUT DATA FROM SQL DB /INTAKE FLAT FILE ####################################
+################################################# SQL Queries #####################################################
 ###################################################################################################################
 ###################################################################################################################
 
-################################## Input sales data for category and subcat level schedule #####################################
-channel<-odbcConnect(DBserver)
-uploadData<-sqlQuery(channel,"
-                               
-                                         
-             SET NOCOUNT ON                    
+## US retail & auction data load
+US_dataload<-"SET NOCOUNT ON                    
 
 			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-1,GETDATE()))-1, -1) as date)
 			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-1, -1) AS date)
@@ -220,7 +77,7 @@ uploadData<-sqlQuery(channel,"
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
                     or (SaleType='retail' AND IsUsedForComparables='Y')))     
                     AND CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
-                    AND MakeId NOT in (58137,78,14086) --Miscellaneous,Not Attributed,Various
+                    AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
 					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')  
                     AND SaleDate >@dateStart AND saledate<=@dateEnd 
                     --and categoryid in (2606,2612,30,2515,2616)
@@ -230,13 +87,12 @@ uploadData<-sqlQuery(channel,"
                     AND [SalePriceSF]>100
                     AND CurrentABCost is not NULL 
                     AND M1PrecedingABCost is not NULL
-                    AND Option15 is NULL 
-
-              ")
+                    AND Option15 is NULL "
 
 ###################################### Input listing data for Cranes #########################################
-channel<-odbcConnect(DBserver)
-uploadListing<-sqlQuery(channel," SET NOCOUNT ON
+
+
+Listing_dataload<-" SET NOCOUNT ON
 Declare @PublishDate DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-1, -1) AS date)
 Declare @EOpriorM DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
 
@@ -290,15 +146,13 @@ Declare @year_20 INT = @topyear-20
      AND ETV.[AppraisalBookPublishDate]=@EOpriorM
 
   Where LU.CountryCode = 'USA' 
-  and [DateScrapedMostRecent] in (SELECT Max([ScrapeDate])
-								  FROM [Listings].[dbo].[vw_ListingsScrapes]
-								  Where [SourceId] ='cranenetwork.com' and ScrapeDate between @EOpriorM and @PublishDate)
+  and LU.[DateScrapedMostRecent] between @EOpriorM and @PublishDate -- listing sraped in the effective months. about 4 to 5 scrapes
 
-  --and ([DateChangedMostRecent]>='2019-09-01')
+  and DATEDIFF(Day,LU.[DateChangedMostRecent],LU.[DateScrapedMostRecent]) <=90
   AND [Year] >= @year_20 AND [Year] <= @compingyr
   and LU.categoryid in (2605,2603,2608,2604,2606,2577,19,2607) 
   AND Lu.Price is not null AND ETV.ABCost is not null 
-  AND LU.MakeId NOT in (58137,78,14086,7363) --Miscellaneous,Not Attributed,Various,N/A")
+  AND LU.MakeId NOT in (58137,78,7363) --Miscellaneous,Not Attributed,Various,N/A"
 
 
 
@@ -306,7 +160,7 @@ Declare @year_20 INT = @topyear-20
 MakeAdj_CatL <- Mlist %>% distinct(CategoryId)
 CategoryId <- cbind(MakeAdj_CatL, MakeAdj_CatL)
 
-In_makeAdj<-sqlExecute(channel,"
+MakeAdjust_dataload<-"
 
 /*************************************** Define Variables ***************************************/           
 SET NOCOUNT ON                    
@@ -383,7 +237,7 @@ Drop Table If exists #Data
                     AND [SalePriceSF]>100
                     AND CurrentABCost is not NULL 
                     AND M1PrecedingABCost is not NULL
-                    AND MakeId NOT in (58137,78,14086) --Miscellaneous,Not Attributed,Various
+                    AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
 
 
 /*************************************** M1 Values - Bi.ABCV ***************************************/     
@@ -427,12 +281,12 @@ WHERE spValue < @badData_hi AND spValue > @badData_low and rowNum<=@recentThresh
 Group By CSM.CategoryId,CSM.CategoryName, CSM.SubcategoryId,CSM.SubcategoryName, CSM.MakeId, CSM.MakeName, CSM.SaleType
 ORder By CSM.CategoryId,CSM.CategoryName, CSM.SubcategoryId,CSM.SubcategoryName, CSM.MakeId, CSM.MakeName, CSM.SaleType
 
-" ,CategoryId, fetch=T)
+" 
 
 
 ################################## 1.C Input last month category and subcat level schedule #####################################
-channel<-odbcConnect("production")
-LastMonth_import<-sqlQuery(channel,"
+
+LM_USA_load<-"
 Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
 
 SELECT [ClassificationId]
@@ -448,14 +302,13 @@ SELECT [ClassificationId]
       ,[FlvSchedulePercentage]/100 as CurrentFlv
   FROM [ras_sas].[BI].[AppraisalBookClassificationValues]
   WHERE [AppraisalBookPublishDate] = @EffectiveDate
-  AND NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%')
+  AND (NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%') OR [ClassificationId]=1)
   AND ModelId is null 
-  AND ModelYear Between 2007 And 2020")
+  AND ModelYear Between 2007 And 2020"
 
 ################################## 1.D Input last month apprciation and depreciation values #####################################
 
-Last_depr<-sqlQuery(channel,"
-Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
+Last_depr_USAload<-"Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
 
 SELECT [ClassificationId]
       ,[AppraisalBookIssueID]
@@ -464,13 +317,13 @@ SELECT [ClassificationId]
       ,[FLVDepreciationPercentage]/100 AS Depreciation
   FROM [ras_sas].[BI].[AppraisalBookSchedules]
   Where [AppraisalBookPublishDate] = @EffectiveDate
-  AND ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL ")
+  AND ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL "
 
 
 
 ################################ Classification - csm #########################################
 
-AllClass<-sqlQuery(channel,"
+AllClass<-"
 SELECT [ClassificationId]
       ,[CategoryId]
       ,[CategoryName]
@@ -482,15 +335,14 @@ SELECT [ClassificationId]
   Where  Modelid is null
     And NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%')
 --	AND SubcategoryName NOT LIKE 'DO NOT USE%' 
-	AND (MakeId NOT IN (78,7363,58137,14086) AND MakeName Not LIke 'DNU%') -- Misc, N/A, Not Attributed, Various
+	AND (MakeId NOT IN (78,7363,58137) AND MakeName Not LIke 'DNU%') -- Misc, N/A, Not Attributed, Various
   Order By 
       [CategoryName]
       ,[SubcategoryName]
-      ,[MakeName]
-")
+      ,[MakeName]"
 
 ################################ Grouping #########################################
-ReportGrp<-sqlQuery(channel,
+ReportGrp<-
 "SET NOCOUNT ON
 DROP TABLE IF EXISTS #reptGrp
 SELECT Distinct
@@ -506,4 +358,175 @@ SELECT Distinct
 DELETE #reptGrp
 WHERE [ReportGroup] ='Global' AND CategoryId in (15,29,362)
 
-SELECT * FROM #reptGrp Order By ReportGroup")
+SELECT * FROM #reptGrp Order By ReportGroup"
+
+################################################################# UK ################################################################# 
+
+
+UK_dataload<-"
+                               
+             SET NOCOUNT ON                    
+
+			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-2,GETDATE()))-2, -1) as date)
+			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
+
+            Declare @topyear INT = 2019
+            Declare @compingyr INT = @topyear+1
+					  Declare @botyear INT =  @compingyr-10
+					  Declare @ext_botYr INT = @compingyr-12
+            Declare @dep_endyr INT = @compingyr-15
+            
+            
+            Declare @index_RetL decimal(10,1) = 0.5    
+            Declare @index_AucL decimal(10,1) = 0.3  
+			      Declare @index_RetH decimal(10,1) = 1.5    
+            Declare @index_AucH decimal(10,1) = 1.2
+
+
+            Drop Table if exists #Retail
+                 SELECT 
+                    
+                    BIC.CustomerAssetId as CompId
+                    ,BIC.[EquipmentTypeId]
+                    ,BIC.[CategoryId]
+                    ,BIC.[CategoryName]
+                    ,BIC.[SubcategoryId]
+                    ,BIC.[SubcategoryName]
+                    ,BIC.[MakeId]
+                    ,BIC.[MakeName]
+                    ,BIC.[ModelId]
+                    ,BIC.[ModelName]
+                    ,BIC.[ModelYear]
+                    ,BIC.SaleDate
+                    ,EOMONTH(BIC.SaleDate) as EffectiveDate
+					,BIC.OptionValue03 as SalePrice
+					,'Retail' as SaleType
+                    ,BIC.MilesHours
+                    ,BIC.MilesHoursCode
+                    ,BIC.[M1AppraisalBookPublishDate]
+                    ,BIC.M1PrecedingFmv as M1Value
+					,ET.[CurrentABCost]
+					,BIC.OptionValue03/ET.[CurrentABCost]  AS SaleAB
+                    ,BIC.OptionValue03/BIC.M1PrecedingFmv as SPvalue
+                    ,cast(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00 as decimal(10,4))  as Age
+					,'GBR' as Country
+                    ,CASE                    
+                    WHEN BIC.OptionValue03/ET.[CurrentABCost] < @index_RetL - (@index_RetL*(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00))/4.0
+					  OR BIC.OptionValue03/ET.[CurrentABCost] > @index_RetH - (@index_RetH*(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00))/25.0 THEN 'EcxRegr'
+                    ELSE 'inUse' END AS 'Flag'
+
+                    ,CASE WHEN BIC.Modelyear < @botyear or BIC.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
+                
+				INTO #Retail      
+                FROM [ras_sas].[BI].[Comparables] BIC
+				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
+
+				On BIC.[EquipmentTypeId] = ET.[EquipmentTypeId] 
+                    
+                WHERE 
+                  ET.[MarketCode]='GBUK' and
+                 (BIC.SaleType='retail' AND BIC.CustomerId in (SELECT [CustomerID]
+														FROM [ras_sas].[BI].[Customers]
+														where [IsUsedForUKABCost]='Y'))
+
+                AND BIC.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
+                AND BIC.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
+					        AND NOT (BIC.[SubcategoryId] in (2806,2808,2001,2636) and BIC.makeid=31 and BIC.ModelName not like 'XQ%')  
+					       
+                AND BIC.SaleDate >@dateStart AND BIC.saledate<=@dateEnd
+                --AND BIC.SaleDate >='2017-11-01' AND BIC.saledate<='2019-10-31'
+                AND BIC.ModelYear <= @compingyr and BIC.ModelYear>=@dep_endyr
+                AND BIC.OptionValue03>100
+                AND ET.[CurrentABCost] is not NULL
+                AND BIC.M1PrecedingFmv  is not NULL
+                AND BIC.Option15 is NULL 
+
+
+				Drop Table if exists #Auction
+				 SELECT                    
+				  AucS.InternetComparableId as CompId
+				  ,AucS.[EquipmentTypeId]
+                    ,AucS.[CategoryId]
+                    ,AucS.[CategoryName]
+                    ,AucS.[SubcategoryId]
+                    ,AucS.[SubcategoryName]
+                    ,AucS.[MakeId]
+                    ,AucS.[MakeName]
+                    ,AucS.[ModelId]
+                    ,AucS.[ModelName]
+                    ,AucS.[ModelYear]
+                    ,AucS.SaleDate
+                    ,EOMONTH(AucS.SaleDate) as EffectiveDate
+					,AucS.SalePrice as SalePrice
+					,'Auction' as SaleType
+                    ,AucS.MilesHours
+                    ,AucS.MilesHoursCode
+                    ,AucS.[M1AppraisalBookPublishDate]
+                    ,AucS.M1PrecedingFlv as M1Value
+					,ET.[CurrentABCost] as CurrentABCost
+					,AucS.SalePrice/ET.[CurrentABCost]  AS SaleAB
+					,AucS.SalePrice/AucS.M1PrecedingFlv as SPvalue
+                    ,cast(YEAR(AucS.SaleDate)-AucS.ModelYear + (MONTH(AucS.SaleDate)-6)/12.00 as decimal(10,4))  as Age
+					,CountryCode as Country
+                    ,CASE                    
+                    WHEN AucS.SalePrice/ET.[CurrentABCost] < @index_AucL - (@index_AucL*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/4.0
+					  OR AucS.SalePrice/ET.[CurrentABCost] > @index_AucH - (@index_AucH*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/25.0 THEN 'EcxRegr'
+
+                    ELSE 'inUse' END AS 'Flag'
+                    
+				   ,CASE WHEN AucS.Modelyear < @botyear or AucS.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
+                INTO #Auction    
+                FROM [ras_sas].[BI].[AuctionSales] AucS
+				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
+
+				On AucS.[EquipmentTypeId] = ET.[EquipmentTypeId] 
+                    
+                WHERE  ET.[MarketCode]='GBUK' and AucS.CountryCode ='GBR' AND AucS.CurrencyCode='GBP' 
+				AND AucS.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
+                AND AucS.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
+					        AND NOT (AucS.[SubcategoryId] in (2806,2808,2001,2636) and AucS.makeid=31 and AucS.ModelName not like 'XQ%')  
+                AND AucS.SaleDate >@dateStart AND AucS.saledate<=@dateEnd
+                --AND AucS.SaleDate >='2017-11-01' AND AucS.saledate<='2019-10-31'
+                AND AucS.ModelYear <= @compingyr and AucS.ModelYear>=@dep_endyr
+                AND AucS.SalePrice>100
+                AND ET.[CurrentABCost] is not NULL
+                AND AucS.M1PrecedingFlv is not NULL
+
+ SELECT * FROM #Retail 
+ Union ALL
+ SELECT * FROM #Auction"
+
+
+################################## 1.C Input last month category and subcat level schedule #####################################
+
+LM_UK_load<-"
+Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-2, -1) AS date)
+
+SELECT [ClassificationId]
+      ,[CategoryId]
+      ,[CategoryName]
+      ,[SubcategoryId]
+      ,[SubcategoryName]
+       ,[MakeId]
+      , MakeName
+      ,[ModelYear]
+      ,[FmvSchedulePercentage] as CurrentFmv
+      ,[FlvSchedulePercentage] as CurrentFlv
+  FROM [ras_sas].[BI].[AppraisalBookClassificationValuesGBUK]
+  WHERE 
+ [MarketCode]='GBUK' and [AppraisalBookPublishDate]=@EffectiveDate
+   AND (NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%') OR [ClassificationId]=1)
+  AND ModelId is null 
+  AND ModelYear Between 2007 And 2020"
+################################## 1.D Input last month apprciation and depreciation values #####################################
+
+Last_depr_UKload<-"
+Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-2, -1) AS date)
+
+SELECT [ClassificationId]
+      ,[FLVAppreciationPercentage]/100 AS Appreciation
+      ,[FLVDepreciationPercentage]/100 AS Depreciation
+  FROM [ras_sas].[BI].[AppraisalBookSchedulesGBUK]
+  Where  [MarketCode]='GBUK' and [AppraisalBookPublishDate]=@EffectiveDate
+   and ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL "
+

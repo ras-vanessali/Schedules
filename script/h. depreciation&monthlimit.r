@@ -137,7 +137,7 @@ applydep<-merge(combDeprApr,comb_Out,by=c('Schedule')) %>%
 ###################################################################################################################
 
 
-LM_deprapr <- gather(Last_depr %>% select(ClassificationId,Appreciation,Depreciation),ModelYear,LMvalue,Appreciation:Depreciation,factor_key = T) %>%
+LM_deprapr <- gather(LastMonth_depr %>% select(ClassificationId,Appreciation,Depreciation),ModelYear,LMvalue,Appreciation:Depreciation,factor_key = T) %>%
   mutate(ModelYear = ifelse(ModelYear=='Appreciation','App','Dep'))
 
 MoM_deprapr<-merge(applydep,LM_deprapr,by=c("ClassificationId",'ModelYear'),all.x=T) %>%
@@ -202,12 +202,12 @@ Global_Depr <- merge(CapSchedule %>% filter(CategoryId %in% GlobalList & Plot=='
 
 ### Global
 GlobalValues<-rbind(GlobalSched,Global_Depr) %>%
-  rename(limit_fmv=Globalfmv,limit_flv=Globalflv)
+  rename(Adjfmv=Globalfmv,Adjflv=Globalflv)
 
 
 ##################################### Limit the schedule by last month value #########################################
 ## manage last month schedule table which imported from BI.AppraisalBookClassificationValues
-lastM_schedule<-LastMonth_import %>%
+lastM_schedule<-LastMonth_Sched %>%
   filter(ModelYear>=botyear-1 & ModelYear <= topyear) %>%
   select(ClassificationId,ModelYear,CurrentFmv, CurrentFlv) %>%
   distinct()
@@ -221,7 +221,10 @@ MoMSchedules <- merge(CapSchedule,lastM_schedule,by=c("ClassificationId","ModelY
   #       limit_flv = ifelse(is.na(CurrentFlv),Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM))) %>%
 arrange(ClassificationId,desc(ModelYear))
 
-
+## limit by last month for global
+MoMSched.global = merge(GlobalValues,lastM_schedule %>% filter(ClassificationId==1),by=c("ClassificationId","ModelYear"),all.x=T) %>%
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
+         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))
 #write.csv(CapSchedules,'CapSchedules.csv')
 
 
@@ -230,7 +233,7 @@ arrange(ClassificationId,desc(ModelYear))
 
 FinalSchedules<-rbind(MoMSchedules %>% select(ClassificationId,ModelYear,limit_fmv, limit_flv),
                       MoM_deprapr %>% mutate(limit_fmv=limit_rate,limit_flv = limit_rate) %>% select(ClassificationId,ModelYear,limit_fmv, limit_flv),
-                      GlobalValues %>% select(ClassificationId,ModelYear,limit_fmv, limit_flv)) %>%
+                      MoMSched.global %>% select(ClassificationId,ModelYear,limit_fmv, limit_flv)) %>%
   arrange(ClassificationId,desc(ModelYear))
 
 #write.csv(FinalSchedules,'20181212FinalSchedules.csv')
