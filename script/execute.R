@@ -18,8 +18,8 @@ library(readxl)
 library(stringr)
 
 # country
-#CountryCode = 'GBR'
-CountryCode = 'USA'
+CountryCode = 'GBR'
+#CountryCode = 'USA'
 # db enviroment & connect
 DBserver = 'production' 
 #DBserver = 'rasquery'
