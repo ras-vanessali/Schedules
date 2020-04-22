@@ -121,7 +121,10 @@ auc_regression <- rbind(SchedRetBorw %>% select(Schedule),Sched %>% select(Sched
 nSched_Auc<-dim(auc_regression)[1]
 
 checklist_auc<-rep(NA, nSched_Auc)
+alpha1.auc<-rep(NA,nSched_Auc)
+alpha1hat.auc<-rep(NA,nSched_Auc)
 alpha2.auc<-rep(NA,nSched_Auc)
+alpha3.auc<-rep(NA,nSched_Auc)
 coef_auc = matrix(0,nSched_Auc,3)
 ######################### Declare the variables #########################################################
 
@@ -165,10 +168,10 @@ for (j in 1:nSched_Auc){
       }
       
     }
-      alpha2.auc[j]=alpha[2]
-      rownames(AuctionOutput_A)<-auc_regression[,1]
-      colnames(AuctionOutput_A)<-AgeName 
-      rownames(coef_auc)<-auc_regression[,1]
+    alpha2.auc[j]=alpha[2]
+    rownames(AuctionOutput_A)<-auc_regression[,1]
+    colnames(AuctionOutput_A)<-AgeName 
+    rownames(coef_auc)<-auc_regression[,1]
   }
 }
 alpha2_ls.auc = data.frame(auc_regression,alpha2.auc)
@@ -178,10 +181,10 @@ export_auction_regression = data.frame(auc_regression,checklist_auc)
 
 # trim the table - build first column
 outputAuction_RetB<-rownames_to_column(as.data.frame(AuctionOutput_A))
-coef_auc_out<-rownames_to_column(as.data.frame(coef_auc))
+#coef_auc_out<-rownames_to_column(as.data.frame(coef_auc))
 #name the row and columns
 colnames(outputAuction_RetB)<-c("Schedule",topyear:ext_botYr)
-colnames(coef_auc_out)<-c("Schedule",'coef1','coef2','coef3')
+#colnames(coef_auc_out)<-c("Schedule",'coef1','coef2','coef3')
 
 # transfer table from wide to long
 transOut_RetB<-gather(outputAuction_RetB,ModelYear,flv,as.character(topyear):as.character(ext_botYr),factor_key = TRUE) %>%

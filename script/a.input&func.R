@@ -34,12 +34,19 @@ threshold_rec.calc = 25
 
 recency_cap = 0.25
 ## set the minimum gap between two channels
-capChannel = 0.10
+if (CountryCode == 'USA'){
+  capChannel = 0.10
+} else{
+  capChannel = 0.05
+  }
+
 ## use for channel confict - distinguish older and newer age
 chanyr = 3
 ## use for channel check who govern in middel years. retail data >5, Auction governs
 retBelieve = 5 
 
+### borrow schedule first year move
+brwsched_move = .1
 
 ## newest year in auction have to be in the range
 capMonthpct = 0.01
@@ -51,7 +58,7 @@ LowerB = 0
 
 ## logistic growth regression slope cap
 slopecap_low = -1.5
-slopecap_up = -.05
+slopecap_up = -.1
 ## caps of appreciation and depreciation
 app_yrgap = 3.00
 appBound_upp = 0.15
@@ -77,6 +84,7 @@ makeSFbot = 0.7
 Min_delta =0.1
 
 ## threshold of data points for make adjusters
+thredtpts.sched = 50
 thredtpts = 15
 
 ## use for phase in factors on each model year

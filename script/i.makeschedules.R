@@ -4,28 +4,35 @@
 ###################################################################################################################
 ###################################################################################################################
 ### join the make map to the calcualted CSM sp/value
-makeAdj_calDt<-merge(joinmap_make,MakeAdjData,by=c('CategoryId','SubcategoryId'))
+makeAdj_calDt<-merge(joinmap_make,MakeAdjData%>% select(-rowNum),by=c('CategoryId','SubcategoryId'))
+
+makeRowNum<-makeAdj_calDt%>%
+  group_by(SaleType,Schedule,MakeId,MakeName) %>%
+  arrange(desc(as.Date(SaleDate))) %>%
+  mutate(rowNum = row_number()) %>%
+  filter(!(as.Date(SaleDate)<=sixLastM & rowNum>thredtpts.sched))
 
 ### calcualte the average sp/value (make adjusters) by schedule and make
-MakeSFcalc_Sched<-makeAdj_calDt %>%
+MakeSFcalc_Sched<-makeRowNum %>%
   group_by(Schedule,MakeId,MakeName,SaleType) %>%
   # base scale factor
-  summarise(Makerate_sched = sum(AvgspValue*Numcomps)/sum(Numcomps),
-            nMake_sched = sum(Numcomps))
+  summarise(Makerate_sched = mean(spValue),
+            nMake_sched = max(rowNum),
+            Dateback = min(as.Date(SaleDate)))
   
 ### calcualte the average sp/value (make adjusters) by category and make
-MakeSFcalc_Categ<-makeAdj_calDt %>%
+MakeSFcalc_Categ<-makeRowNum %>%
   group_by(CategoryId,CategoryName,MakeId,MakeName,SaleType) %>%
   # base scale factor
-  summarise(Makerate_cat = sum(AvgspValue*Numcomps)/sum(Numcomps),
-            nMake_cat = sum(Numcomps)) 
+  summarise(Makerate_cat = mean(spValue),
+            nMake_cat = max(rowNum))
 
 ### calcualte the average sp/value (make adjusters) by report group and make
-MakeSFcalc_rptGrp<-makeAdj_calDt %>%
+MakeSFcalc_rptGrp<-makeRowNum %>%
   group_by(ReportGroup,MakeId,MakeName,SaleType) %>%
   # base scale factor
-  summarise(Makerate_grp = sum(AvgspValue*Numcomps)/sum(Numcomps),
-            nMake_grp = sum(Numcomps)) 
+  summarise(Makerate_grp = mean(spValue),
+            nMake_grp = max(rowNum))
 
 ### create a map between category and schedule 
 Categ_sched <- rbind(In %>% select(CategoryId,Schedule),InR %>% select(CategoryId,Schedule),InA %>% select(CategoryId,Schedule)) %>% 
@@ -33,7 +40,8 @@ Categ_sched <- rbind(In %>% select(CategoryId,Schedule),InR %>% select(CategoryI
   group_by(Schedule) %>%
   filter(row_number()==1)
 
-CategLev_make<-merge(merge(MakeSFcalc_Sched,Categ_sched,by='Schedule',all.x=T),MakeSFcalc_Categ,by=c('CategoryId','MakeId','MakeName','SaleType')) 
+CategLev_make<-merge(merge(MakeSFcalc_Sched,Categ_sched,by='Schedule',all.x=T),
+                     MakeSFcalc_Categ,by=c('CategoryId','MakeId','MakeName','SaleType')) 
   
 
 MakeSFcalc<-merge(merge(CategLev_make,ReportGrp,by="CategoryId", all.x=T),MakeSFcalc_rptGrp,by=c('ReportGroup','MakeId','MakeName','SaleType')) %>%
@@ -64,13 +72,12 @@ MinDelta<-trans_MakeSFcalc %>%
 #write.csv(MinDelta,'20190519 MakeAdjusters.csv')
 ## outer join the make output to the calculated scale factor, assign 1 to those with no comps
 joinMakeOut<-merge(MinDelta,make_output,by=c('Schedule','MakeId','MakeName'),all.y=TRUE) %>% 
-  select(Schedule,ClassificationId, CategoryId,SubcategoryName, MakeName,MakeId,chancheck_ret,chancheck_auc) %>%
+  select(Schedule,ClassificationId, CategoryId,CategoryName,SubcategoryId,SubcategoryName, MakeId,MakeName,chancheck_ret,chancheck_auc) %>%
   rename(Retail=chancheck_ret,Auction=chancheck_auc)
 
 joinMakeOut[is.na(joinMakeOut)]<-1
 write.csv(joinMakeOut,paste(publishDate," MakeAdjuster.csv"))
-
-
+write.csv(MakeSFcalc_Sched,paste(publishDate," MakeDateComps.csv"))
 ################## 11.C Apply make adjusters to each model year
 
 ## list the index to weaken the scale factor for newer years
@@ -144,8 +151,14 @@ AllTmake_new <- merge(AllTmake,RebaseTemp_2make,by=c('ClassificationId','ModelYe
 
 
 MoMlimit<-merge(AllTmake_new,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
-  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
-         limit_flv = ifelse(is.na(CurrentFlv),flv_make,ifelse(CategoryId ==2616,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM)))) 
+  #mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
+  #       limit_flv = ifelse(is.na(CurrentFlv),flv_make,ifelse(CategoryId ==2616,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM)))) %>%
+  
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,fmv_make),
+         limit_flv = ifelse(is.na(CurrentFlv),flv_make,flv_make)) %>%
+  #### One time change for market condition in March,2020
+  #mutate(limit_flv = ifelse(CategoryId %in% c(2515, 360, 29, 362, 15, 6, 2509, 2505, 32, 2599, 164),limit_flv * .96, ifelse(CategoryId ==2616, limit_flv * .90,limit_flv * .93)))%>%
+  arrange(ClassificationId,ModelYear)
 
 
 #MoMlimit <- MoMlimit %>% filter(Schedule != 'Sweeper And Brooms Ride-On USA')

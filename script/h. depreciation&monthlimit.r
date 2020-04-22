@@ -215,10 +215,12 @@ lastM_schedule<-LastMonth_Sched %>%
 
 ### join to last month value and limit the movement
 MoMSchedules <- merge(CapSchedule,lastM_schedule,by=c("ClassificationId","ModelYear"),all.x=T) %>%
-  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
-         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(CategoryId == 2616, MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
   #mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
-  #       limit_flv = ifelse(is.na(CurrentFlv),Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM))) %>%
+  #       limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(CategoryId == 2616, MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,ifelse(ClassificationId %in% catchupSched, Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM))),
+         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(ClassificationId %in% catchupSched, Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
+  #### One time change for market condition in March,2020
+ # mutate(limit_flv = ifelse(CategoryId %in% c(2515, 360, 29, 362, 15, 6, 2509, 2505, 32, 2599, 164),limit_flv * .96, ifelse(CategoryId ==2616, limit_flv * .90,limit_flv * .93))) %>%
 arrange(ClassificationId,desc(ModelYear))
 
 ## limit by last month for global

@@ -210,7 +210,7 @@ BrwAucList <- SchedR %>% filter(BorrowType != 'AuctionBorrowRetail') %>% select(
 BrwRetList <- SchedR %>% filter(BorrowType != 'RetailBorrowAuction') %>% select(Schedule,BorrowSchedule, BorrowType) 
 
 
-############################ Borrow Auction ############################ 
+############################ Retail Borrow Auction ############################ 
 Num_dtpts_Auc<-merge(Data_all_plot,BrwAucList,by=c('Schedule','BorrowSchedule')) %>%
   filter(SaleType=='Auction' & YearFlag=='AdjusUseYr') %>%
   group_by(BorrowSchedule,Schedule) %>%
@@ -243,7 +243,7 @@ RetbAuc<-merge(BrwAucList %>% select(-BorrowType),borwAuc_Rate,all.x=T,by=c('Sch
   select(-diffperc, -N)
 
 
-############################ Borrow Auction ############################ 
+############################Auction Borrow Auction ############################ 
 Num_dtpts_Ret<-merge(Data_all_plot,BrwRetList,by=c('Schedule','BorrowSchedule')) %>%
   filter(SaleType=='Retail' & YearFlag=='AdjusUseYr') %>%
   group_by(BorrowSchedule,Schedule) %>%
@@ -283,37 +283,82 @@ AucbRet<-merge(BrwRetList %>% select(-BorrowType),borwRet_Rate,all.x=T,by=c('Sch
 #write.csv(inheritRet,'AuctionBorrow Rates.csv')
 
 ####################################### Apply the borrow factors on all years ###################################
-## list the index to weaken the scale factor for newer years
-yrAdj = data.frame(ModelYear = topyear:botyear, indexYrMake = c(0.1,0.25,0.4,0.55,0.7,0.85,1,1,1,1))
+######### RbA
+inheritAucOut<-merge(AucSchedule %>% rename(BorrowSchedule=Schedule),RetbAuc,by='BorrowSchedule') %>%
+  arrange(Schedule,desc(ModelYear)) 
 
-# join the map to the auction values
-inheritAucOut<-merge(merge(AucSchedule %>% rename(BorrowSchedule=Schedule),RetbAuc,by='BorrowSchedule'),yrAdj,by='ModelYear') %>% 
-  mutate(lamda = pmin(1,((month(publishDate)-6)/12)*phaseinFactor + indexYrMake)) %>%
-  mutate(offRate_Yr = ifelse(ModelYear <= topyear -phaseinAge, offRate, (offRate -1) * lamda + 1)) %>%
-  mutate(Adjflv_make = as.numeric(Adjflv)*offRate_Yr) %>%
-  select(Schedule,ModelYear,Adjflv,Adjflv_make,offRate_Yr,UnitsAuc) %>%
+## calculate deltas betweent the top year and 7th year
+dw.RbA = merge(inheritAucOut %>% filter(ModelYear == topyear) %>% select(Schedule,Adjflv,offRate),
+               inheritAucOut %>% filter(ModelYear == topyear -6) %>% select(Schedule,Adjflv),by='Schedule') %>%
+  mutate(parent.delta = Adjflv.x - Adjflv.y) %>%
+  mutate(topy.adj = ((offRate-1)*brwsched_move+1)*Adjflv.x,
+         child.delta = topy.adj  - Adjflv.y *offRate) %>%
+  select(Schedule,topy.adj,parent.delta,child.delta)
+
+## join the results back to the table with full years
+inheritAucOut.upd<-merge(inheritAucOut,dw.RbA,by='Schedule') 
+
+
+
+## interpolate the years between top year and 7th year
+for (i in 1:dim(inheritAucOut.upd)[1]){
+  ## deprecation rate by year
+  inheritAucOut.upd$diffRate[i] = ifelse(inheritAucOut.upd$Schedule[i] == inheritAucOut.upd$Schedule[i-1] &
+                                           inheritAucOut.upd$ModelYear[i] == inheritAucOut.upd$ModelYear[i-1]-1,
+                                         round((inheritAucOut.upd$Adjflv[i-1] - inheritAucOut.upd$Adjflv[i])/inheritAucOut.upd$parent.delta[i],digits=4),0)
+  
+  ## adjusted schedule
+  inheritAucOut.upd$adjustrate[i] = inheritAucOut.upd$topy.adj[i]
+  inheritAucOut.upd$adjustrate[i] = ifelse(inheritAucOut.upd$ModelYear[i] <= topyear -6, inheritAucOut.upd$Adjflv[i]*inheritAucOut.upd$offRate[i],
+                                           ifelse(inheritAucOut.upd$ModelYear[i] == topyear, inheritAucOut.upd$topy.adj[i],
+                                                  inheritAucOut.upd$adjustrate[i-1]-inheritAucOut.upd$child.delta[i]*inheritAucOut.upd$diffRate[i]))
+  
+}
+
+
+AucBorwOut <-inheritAucOut.upd %>%
+  select(Schedule,ModelYear,adjustrate,UnitsAuc) %>%
+  rename(Adjflv=adjustrate) %>%
   arrange(Schedule,desc(ModelYear))
 
+######### AbR
 
 
-inheritRetOut<-merge(merge(RetSchedule %>% rename(BorrowSchedule=Schedule),AucbRet,by='BorrowSchedule'),yrAdj,by='ModelYear') %>% 
-  mutate(lamda = pmin(1,((month(publishDate)-6)/12)*phaseinFactor + indexYrMake)) %>%
-  mutate(offRate_Yr = ifelse(ModelYear <= topyear -phaseinAge, offRate, (offRate -1) * lamda + 1)) %>%
-  mutate(Adjfmv_make = as.numeric(Adjfmv)*offRate_Yr) %>%
-  select(Schedule,ModelYear,Adjfmv,Adjfmv_make,offRate_Yr,UnitsRet) %>%
-  arrange(Schedule,desc(ModelYear))
+inheritRetOut<-merge(RetSchedule %>% rename(BorrowSchedule=Schedule),AucbRet,by='BorrowSchedule') %>%
+  arrange(Schedule,desc(ModelYear)) 
 
-#write.csv(inheritAucOut,'auctionborrow schedules.csv')
+## calculate deltas betweent the top year and 7th year
+dw.AbR = merge(inheritRetOut %>% filter(ModelYear == topyear) %>% select(Schedule,Adjfmv,offRate),
+               inheritRetOut %>% filter(ModelYear == topyear -6) %>% select(Schedule,Adjfmv),by='Schedule') %>%
+  mutate(parent.delta = Adjfmv.x - Adjfmv.y) %>%
+  mutate(topy.adj = ((offRate-1)*brwsched_move+1)*Adjfmv.x,
+         child.delta = topy.adj  - Adjfmv.y *offRate) %>%
+  select(Schedule,topy.adj,parent.delta,child.delta)
 
-AucBorwOut <-inheritAucOut %>%
-  select(Schedule,ModelYear,Adjflv_make,UnitsAuc) %>%
-  rename(Adjflv=Adjflv_make) %>%
-  arrange(Schedule,desc(ModelYear))
+## join the results back to the table with full years
+inheritRetOut.upd<-merge(inheritRetOut,dw.AbR,by='Schedule') 
 
 
-RetBorwOut <-inheritRetOut %>%
-  select(Schedule,ModelYear,Adjfmv_make,UnitsRet) %>%
-  rename(Adjfmv=Adjfmv_make) %>%
+
+## interpolate the years between top year and 7th year
+for (i in 1:dim(inheritRetOut.upd)[1]){
+  ## deprecation rate by year
+  inheritRetOut.upd$diffRate[i] = ifelse(inheritRetOut.upd$Schedule[i] == inheritRetOut.upd$Schedule[i-1] &
+                                           inheritRetOut.upd$ModelYear[i] == inheritRetOut.upd$ModelYear[i-1]-1,
+                                         round((inheritRetOut.upd$Adjfmv[i-1] - inheritRetOut.upd$Adjfmv[i])/inheritRetOut.upd$parent.delta[i],digits=4),0)
+  
+  ## adjusted schedule
+  inheritRetOut.upd$adjustrate[i] = inheritRetOut.upd$topy.adj[i]
+  inheritRetOut.upd$adjustrate[i] = ifelse(inheritRetOut.upd$ModelYear[i] <= topyear -6, inheritRetOut.upd$Adjfmv[i]*inheritRetOut.upd$offRate[i],
+                                           ifelse(inheritRetOut.upd$ModelYear[i] == topyear, inheritRetOut.upd$topy.adj[i],
+                                                  inheritRetOut.upd$adjustrate[i-1]-inheritRetOut.upd$child.delta[i]*inheritRetOut.upd$diffRate[i]))
+  
+}
+
+
+RetBorwOut <-inheritRetOut.upd %>%
+  select(Schedule,ModelYear,adjustrate,UnitsRet) %>%
+  rename(Adjfmv=adjustrate) %>%
   arrange(Schedule,desc(ModelYear))
 
 #### combine the regular shcedules with borrow schedules

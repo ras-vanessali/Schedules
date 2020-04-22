@@ -50,19 +50,19 @@ US_dataload<-"SET NOCOUNT ON
                     
                     ,CASE WHEN SaleType='Retail' THEN M1PrecedingFmv
                     WHEN SaleType='Auction' THEN M1PrecedingFlv END AS M1Value
-                    ,CurrentABCost
-                    ,[SalePriceSF]/CurrentABCost AS [SaleAB]
+                    ,CurrentABCostUSNA as CurrentABCost
+                    ,[SalePriceSF]/CurrentABCostUSNA AS [SaleAB]
                     ,CASE WHEN SaleType='Retail' THEN SalePriceSF/M1PrecedingFmv
                     WHEN SaleType='Auction' THEN SalePriceSF/M1PrecedingFlv END AS SPvalue
                     
                     ,cast(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00 as decimal(10,4))  as Age
                    ,'USA' as Country
                      ,CASE                    
-                    WHEN SaleType='Retail' AND ([SalePriceSF]/CurrentABCost < @intercept_RetLow - (@intercept_RetLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
-					                           OR [SalePriceSF]/CurrentABCost > @intercept_RetHi - (@intercept_RetHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi) THEN 'EcxRegr'
+                    WHEN SaleType='Retail' AND ([SalePriceSF]/CurrentABCostUSNA < @intercept_RetLow - (@intercept_RetLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
+					                           OR [SalePriceSF]/CurrentABCostUSNA > @intercept_RetHi - (@intercept_RetHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi) THEN 'EcxRegr'
 
-                    WHEN SaleType='Auction' AND ([SalePriceSF]/CurrentABCost < @intercept_AucLow - (@intercept_AucLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
-					                           OR [SalePriceSF]/CurrentABCost > @intercept_AucHi - (@intercept_AucHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi)THEN 'EcxRegr'
+                    WHEN SaleType='Auction' AND ([SalePriceSF]/CurrentABCostUSNA < @intercept_AucLow - (@intercept_AucLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
+					                           OR [SalePriceSF]/CurrentABCostUSNA > @intercept_AucHi - (@intercept_AucHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi)THEN 'EcxRegr'
 
                     ELSE 'inUse' END AS 'Flag'
 				
@@ -72,21 +72,23 @@ US_dataload<-"SET NOCOUNT ON
                     FROM [ras_sas].[BI].[Comparables]
                     
                     WHERE 
-                    ( ([source]='internet' AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
+                    ( ([source]='internet' 
+                       AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
 										   AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24) 
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
-                    or (SaleType='retail' AND IsUsedForComparables='Y')))     
+                       or (SaleType='retail' AND IsUsedForComparables='Y')))     
                     AND CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                     AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
 					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')  
+					          AND NOT (modelid = 40413)
                     AND SaleDate >@dateStart AND saledate<=@dateEnd 
                     --and categoryid in (2606,2612,30,2515,2616)
                     --AND SaleDate >='2018-09-01' AND saledate<='2019-08-31'
                     AND ModelYear <= @compingyr 
                     and ModelYear>= CASE WHEN categoryid in (2605,2603,2608,2604,2606)  THEN @year_20 ELSE @dep_endyr END
                     AND [SalePriceSF]>100
-                    AND CurrentABCost is not NULL 
-                    AND M1PrecedingABCost is not NULL
+                    AND CurrentABCostUSNA is not NULL 
+                    AND M1PrecedingABCostUSNA is not NULL
                     AND Option15 is NULL "
 
 ###################################### Input listing data for Cranes #########################################
@@ -124,24 +126,24 @@ Declare @year_20 INT = @topyear-20
       ,Price ListPrice
       ,[Year] ModelYear
       ,MeterHours
-      ,ETV.ABCost CurrentABCost
+      ,ETV.ABCostUSNA CurrentABCost
 	  ,ETV.[FmvSchedulePercentage]
-	  ,ETV.ABCost*ETV.[FmvSchedulePercentage]/100 as M1Value
+	  ,ETV.ABCostUSNA*ETV.[FmvSchedulePercentage]/100 as M1Value
 	  ,'Listing' AS SaleType
       ,cast(YEAR(@PublishDate)-Year + (MONTH(@PublishDate)-6)/12.00 as decimal(10,4))  as Age
       ,CountryCode as Country
       ,CASE WHEN Year < @botyear or Year >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
      ,CASE                    
-        WHEN (Price/ETV.ABCost < @index_RetL - (@index_RetL*(YEAR(@PublishDate)-Year + (MONTH(@PublishDate)-6)/12.00))/@ind_low
-					       OR Price/ETV.ABCost > @index_RetH - (@index_RetH*(YEAR(@PublishDate)-Year + (MONTH(@PublishDate)-6)/12.00))/@ind_hi) THEN 'EcxRegr'
+        WHEN (Price/ETV.ABCostUSNA < @index_RetL - (@index_RetL*(YEAR(@PublishDate)-Year + (MONTH(@PublishDate)-6)/12.00))/@ind_low
+					       OR Price/ETV.ABCostUSNA > @index_RetH - (@index_RetH*(YEAR(@PublishDate)-Year + (MONTH(@PublishDate)-6)/12.00))/@ind_hi) THEN 'EcxRegr'
           ELSE 'inUse' END AS 'Flag'         
-	  ,Price/ETV.ABCost as SaleAB
+	  ,Price/ETV.ABCostUSNA as SaleAB
 
 
   FROM [Listings].[BI].[ListingsUnique] LU
  -- inner join [ras_sas].[BI].[AppraisalBookEquipmentTypesMKT] ET
  -- on LU.SubcategoryId=ET.SubcategoryId and LU.ModelId = ET.ModelId and ET.AppraisalBookPublishDate = EOMONTH([DateChangedMostRecent])
-  left join [ras_sas].[BI].[AppraisalBookEquipmentTypeValues] ETV
+  left join [ras_sas].[BI].[AppraisalBookEquipmentTypeValuesUSNA] ETV
   on LU.SubcategoryId=ETV.SubcategoryId and LU.ModelId = ETV.ModelId and LU.[Year] = ETV.ModelYear
      AND ETV.[AppraisalBookPublishDate]=@EOpriorM
 
@@ -151,7 +153,7 @@ Declare @year_20 INT = @topyear-20
   and DATEDIFF(Day,LU.[DateChangedMostRecent],LU.[DateScrapedMostRecent]) <=90
   AND [Year] >= @year_20 AND [Year] <= @compingyr
   and LU.categoryid in (2605,2603,2608,2604,2606,2577,19,2607) 
-  AND Lu.Price is not null AND ETV.ABCost is not null 
+  AND Lu.Price is not null AND ETV.ABCostUSNA is not null 
   AND LU.MakeId NOT in (58137,78,7363) --Miscellaneous,Not Attributed,Various,N/A"
 
 
@@ -173,10 +175,11 @@ Declare @Age_f INT = 12
 Declare @badData_low decimal(10,1) = .4
 Declare @badData_hi decimal(10,1) = 1.6
 
-Declare @recentThreshold Int = 15
+Declare @recentThreshold Int = 50
 
 Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-3,GETDATE()))-1, -1) as date)
 Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-1, -1) AS date)
+Declare @month6 Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-7, -1) AS date) 
 
  Declare @intercept_RetLow decimal(10,1) = 0.5    
             Declare @intercept_AucLow decimal(10,1) = 0.3  
@@ -209,15 +212,15 @@ Drop Table If exists #Data
                     ,MilesHours
                     ,MilesHoursCode
                     ,[M1AppraisalBookPublishDate]
-                    ,CurrentABCost
+                    ,CurrentABCostUSNA as CurrentABCost
                     ,cast(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00 as decimal(10,4))  as Age
-                    ,M1PrecedingABCost
+                    ,M1PrecedingABCostUSNA as M1PrecedingABCost
                      ,CASE                    
-                    WHEN SaleType='Retail' AND ([SalePriceSF]/CurrentABCost < @intercept_RetLow - (@intercept_RetLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
-					                           OR [SalePriceSF]/CurrentABCost > @intercept_RetHi - (@intercept_RetHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi) THEN 'EcxRegr'
+                    WHEN SaleType='Retail' AND ([SalePriceSF]/CurrentABCostUSNA < @intercept_RetLow - (@intercept_RetLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
+					                           OR [SalePriceSF]/CurrentABCostUSNA > @intercept_RetHi - (@intercept_RetHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi) THEN 'EcxRegr'
 
-                    WHEN SaleType='Auction' AND ([SalePriceSF]/CurrentABCost < @intercept_AucLow - (@intercept_AucLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
-					                           OR [SalePriceSF]/CurrentABCost > @intercept_AucHi - (@intercept_AucHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi)THEN 'EcxRegr'
+                    WHEN SaleType='Auction' AND ([SalePriceSF]/CurrentABCostUSNA < @intercept_AucLow - (@intercept_AucLow*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_low
+					                           OR [SalePriceSF]/CurrentABCostUSNA > @intercept_AucHi - (@intercept_AucHi*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/@denom_hi)THEN 'EcxRegr'
 
                     ELSE 'inUse' END AS 'Flag'
 				
@@ -231,12 +234,13 @@ Drop Table If exists #Data
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
                     or (SaleType='retail' AND IsUsedForComparables='Y')))     
                     AND CategoryId =?
-					AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')                            
+					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')         
+					           AND NOT (modelid = 40413)
                     AND EOMONTH(SaleDate)>=@dateStart AND EOMONTH(SaleDate)<@dateEnd
                     AND ModelYear <= @topyear and ModelYear>=@ext_botYr
                     AND [SalePriceSF]>100
-                    AND CurrentABCost is not NULL 
-                    AND M1PrecedingABCost is not NULL
+                    AND CurrentABCostUSNA is not NULL 
+                    AND M1PrecedingABCostUSNA is not NULL
                     AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
 
 
@@ -253,7 +257,7 @@ Drop Table If exists #M1Value
          ,[FmvSchedulePercentage]
          ,[FlvSchedulePercentage]
       INTO #M1Value 
-      FROM [ras_sas].[BI].[AppraisalBookClassificationValues]
+      FROM [ras_sas].[BI].[AppraisalBookClassificationValuesUSNA]
       Where CategoryId =?
             AND SubcategoryName is NOT NULL
 	          AND MakeId is null                                                       
@@ -262,12 +266,12 @@ Drop Table If exists #M1Value
 
 
 
-/*************************************** Join & Aggregation ***************************************/     
-SELECT CSM.CategoryId,CSM.CategoryName, CSM.SubcategoryId,CSM.SubcategoryName,CSM.MakeId, CSM.MakeName, CSM.SaleType, avg(spValue) as AvgspValue, count(*) as Numcomps
-FROM( 
-
-	SELECT #Data.CategoryId,#Data.CategoryName, #Data.SubcategoryId,#Data.SubcategoryName, #Data.MakeId, #Data.MakeName,#Data.SaleType,SaleDate
-	,row_number() over (partition by #Data.CategoryId, #Data.SubcategoryId, #Data.MakeId, #Data.SaleType order by #Data.SaleDate desc) as rowNum
+/*************************************** Join & filter ***************************************/     
+select * 
+FROM(
+select *,row_number() over (partition by CategoryId, SubcategoryId, MakeId, SaleType order by SaleDate desc) as rowNum
+from(
+	SELECT #Data.CategoryId,#Data.CategoryName, #Data.SubcategoryId,#Data.SubcategoryName, #Data.MakeId, #Data.MakeName,#Data.SaleType,SaleDate	
 	,CASE WHEN SaleType='Auction' THEN SalePrice/(FlvSchedulePercentage*M1PrecedingABCost/100)
 	ELSE SalePrice/(FmvSchedulePercentage*M1PrecedingABCost/100) END AS spValue
 
@@ -275,11 +279,9 @@ FROM(
 	Inner Join #M1Value
 	ON #Data.SubcategoryId = #M1Value.SubcategoryId AND #Data.EffectiveDate = #M1Value.AppraisalBookPublishDate
 	AND #Data.ModelYear = #M1Value.ModelYear
-	WHERE #Data.Flag = 'inUse' AND #Data.Age between @Age_0 and @Age_f 
-) as CSM
-WHERE spValue < @badData_hi AND spValue > @badData_low and rowNum<=@recentThreshold
-Group By CSM.CategoryId,CSM.CategoryName, CSM.SubcategoryId,CSM.SubcategoryName, CSM.MakeId, CSM.MakeName, CSM.SaleType
-ORder By CSM.CategoryId,CSM.CategoryName, CSM.SubcategoryId,CSM.SubcategoryName, CSM.MakeId, CSM.MakeName, CSM.SaleType
+	WHERE #Data.Flag = 'inUse' AND #Data.Age between @Age_0 and @Age_f ) as CSM
+WHERE spValue < @badData_hi AND spValue > @badData_low) as rowN
+where not(SaleDate<=@month6 and rowNum >@recentThreshold)
 
 " 
 
@@ -300,7 +302,7 @@ SELECT [ClassificationId]
       ,[ModelYear]
       ,[FmvSchedulePercentage]/100 as CurrentFmv
       ,[FlvSchedulePercentage]/100 as CurrentFlv
-  FROM [ras_sas].[BI].[AppraisalBookClassificationValues]
+  FROM [ras_sas].[BI].[AppraisalBookClassificationValuesUSNA]
   WHERE [AppraisalBookPublishDate] = @EffectiveDate
   AND (NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%') OR [ClassificationId]=1)
   AND ModelId is null 
@@ -315,7 +317,7 @@ SELECT [ClassificationId]
       ,[AppraisalBookPublishDate]
       ,[FLVAppreciationPercentage]/100 AS Appreciation
       ,[FLVDepreciationPercentage]/100 AS Depreciation
-  FROM [ras_sas].[BI].[AppraisalBookSchedules]
+  FROM [ras_sas].[BI].[AppraisalBookSchedulesUSNA]
   Where [AppraisalBookPublishDate] = @EffectiveDate
   AND ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL "
 
@@ -359,174 +361,4 @@ DELETE #reptGrp
 WHERE [ReportGroup] ='Global' AND CategoryId in (15,29,362)
 
 SELECT * FROM #reptGrp Order By ReportGroup"
-
-################################################################# UK ################################################################# 
-
-
-UK_dataload<-"
-                               
-             SET NOCOUNT ON                    
-
-			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-2,GETDATE()))-2, -1) as date)
-			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
-
-            Declare @topyear INT = 2019
-            Declare @compingyr INT = @topyear+1
-					  Declare @botyear INT =  @compingyr-10
-					  Declare @ext_botYr INT = @compingyr-12
-            Declare @dep_endyr INT = @compingyr-15
-            
-            
-            Declare @index_RetL decimal(10,1) = 0.5    
-            Declare @index_AucL decimal(10,1) = 0.3  
-			      Declare @index_RetH decimal(10,1) = 1.5    
-            Declare @index_AucH decimal(10,1) = 1.2
-
-
-            Drop Table if exists #Retail
-                 SELECT 
-                    
-                    BIC.CustomerAssetId as CompId
-                    ,BIC.[EquipmentTypeId]
-                    ,BIC.[CategoryId]
-                    ,BIC.[CategoryName]
-                    ,BIC.[SubcategoryId]
-                    ,BIC.[SubcategoryName]
-                    ,BIC.[MakeId]
-                    ,BIC.[MakeName]
-                    ,BIC.[ModelId]
-                    ,BIC.[ModelName]
-                    ,BIC.[ModelYear]
-                    ,BIC.SaleDate
-                    ,EOMONTH(BIC.SaleDate) as EffectiveDate
-					,BIC.OptionValue03 as SalePrice
-					,'Retail' as SaleType
-                    ,BIC.MilesHours
-                    ,BIC.MilesHoursCode
-                    ,BIC.[M1AppraisalBookPublishDate]
-                    ,BIC.M1PrecedingFmv as M1Value
-					,ET.[CurrentABCost]
-					,BIC.OptionValue03/ET.[CurrentABCost]  AS SaleAB
-                    ,BIC.OptionValue03/BIC.M1PrecedingFmv as SPvalue
-                    ,cast(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00 as decimal(10,4))  as Age
-					,'GBR' as Country
-                    ,CASE                    
-                    WHEN BIC.OptionValue03/ET.[CurrentABCost] < @index_RetL - (@index_RetL*(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00))/4.0
-					  OR BIC.OptionValue03/ET.[CurrentABCost] > @index_RetH - (@index_RetH*(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00))/25.0 THEN 'EcxRegr'
-                    ELSE 'inUse' END AS 'Flag'
-
-                    ,CASE WHEN BIC.Modelyear < @botyear or BIC.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
-                
-				INTO #Retail      
-                FROM [ras_sas].[BI].[Comparables] BIC
-				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
-
-				On BIC.[EquipmentTypeId] = ET.[EquipmentTypeId] 
-                    
-                WHERE 
-                  ET.[MarketCode]='GBUK' and
-                 (BIC.SaleType='retail' AND BIC.CustomerId in (SELECT [CustomerID]
-														FROM [ras_sas].[BI].[Customers]
-														where [IsUsedForUKABCost]='Y'))
-
-                AND BIC.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
-                AND BIC.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
-					        AND NOT (BIC.[SubcategoryId] in (2806,2808,2001,2636) and BIC.makeid=31 and BIC.ModelName not like 'XQ%')  
-					       
-                AND BIC.SaleDate >@dateStart AND BIC.saledate<=@dateEnd
-                --AND BIC.SaleDate >='2017-11-01' AND BIC.saledate<='2019-10-31'
-                AND BIC.ModelYear <= @compingyr and BIC.ModelYear>=@dep_endyr
-                AND BIC.OptionValue03>100
-                AND ET.[CurrentABCost] is not NULL
-                AND BIC.M1PrecedingFmv  is not NULL
-                AND BIC.Option15 is NULL 
-
-
-				Drop Table if exists #Auction
-				 SELECT                    
-				  AucS.InternetComparableId as CompId
-				  ,AucS.[EquipmentTypeId]
-                    ,AucS.[CategoryId]
-                    ,AucS.[CategoryName]
-                    ,AucS.[SubcategoryId]
-                    ,AucS.[SubcategoryName]
-                    ,AucS.[MakeId]
-                    ,AucS.[MakeName]
-                    ,AucS.[ModelId]
-                    ,AucS.[ModelName]
-                    ,AucS.[ModelYear]
-                    ,AucS.SaleDate
-                    ,EOMONTH(AucS.SaleDate) as EffectiveDate
-					,AucS.SalePrice as SalePrice
-					,'Auction' as SaleType
-                    ,AucS.MilesHours
-                    ,AucS.MilesHoursCode
-                    ,AucS.[M1AppraisalBookPublishDate]
-                    ,AucS.M1PrecedingFlv as M1Value
-					,ET.[CurrentABCost] as CurrentABCost
-					,AucS.SalePrice/ET.[CurrentABCost]  AS SaleAB
-					,AucS.SalePrice/AucS.M1PrecedingFlv as SPvalue
-                    ,cast(YEAR(AucS.SaleDate)-AucS.ModelYear + (MONTH(AucS.SaleDate)-6)/12.00 as decimal(10,4))  as Age
-					,CountryCode as Country
-                    ,CASE                    
-                    WHEN AucS.SalePrice/ET.[CurrentABCost] < @index_AucL - (@index_AucL*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/4.0
-					  OR AucS.SalePrice/ET.[CurrentABCost] > @index_AucH - (@index_AucH*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/25.0 THEN 'EcxRegr'
-
-                    ELSE 'inUse' END AS 'Flag'
-                    
-				   ,CASE WHEN AucS.Modelyear < @botyear or AucS.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
-                INTO #Auction    
-                FROM [ras_sas].[BI].[AuctionSales] AucS
-				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
-
-				On AucS.[EquipmentTypeId] = ET.[EquipmentTypeId] 
-                    
-                WHERE  ET.[MarketCode]='GBUK' and AucS.CountryCode ='GBR' AND AucS.CurrencyCode='GBP' 
-				AND AucS.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
-                AND AucS.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
-					        AND NOT (AucS.[SubcategoryId] in (2806,2808,2001,2636) and AucS.makeid=31 and AucS.ModelName not like 'XQ%')  
-                AND AucS.SaleDate >@dateStart AND AucS.saledate<=@dateEnd
-                --AND AucS.SaleDate >='2017-11-01' AND AucS.saledate<='2019-10-31'
-                AND AucS.ModelYear <= @compingyr and AucS.ModelYear>=@dep_endyr
-                AND AucS.SalePrice>100
-                AND ET.[CurrentABCost] is not NULL
-                AND AucS.M1PrecedingFlv is not NULL
-
- SELECT * FROM #Retail 
- Union ALL
- SELECT * FROM #Auction"
-
-
-################################## 1.C Input last month category and subcat level schedule #####################################
-
-LM_UK_load<-"
-Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-2, -1) AS date)
-
-SELECT [ClassificationId]
-      ,[CategoryId]
-      ,[CategoryName]
-      ,[SubcategoryId]
-      ,[SubcategoryName]
-       ,[MakeId]
-      , MakeName
-      ,[ModelYear]
-      ,[FmvSchedulePercentage] as CurrentFmv
-      ,[FlvSchedulePercentage] as CurrentFlv
-  FROM [ras_sas].[BI].[AppraisalBookClassificationValuesGBUK]
-  WHERE 
- [MarketCode]='GBUK' and [AppraisalBookPublishDate]=@EffectiveDate
-   AND (NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%') OR [ClassificationId]=1)
-  AND ModelId is null 
-  AND ModelYear Between 2007 And 2020"
-################################## 1.D Input last month apprciation and depreciation values #####################################
-
-Last_depr_UKload<-"
-Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-2, -1) AS date)
-
-SELECT [ClassificationId]
-      ,[FLVAppreciationPercentage]/100 AS Appreciation
-      ,[FLVDepreciationPercentage]/100 AS Depreciation
-  FROM [ras_sas].[BI].[AppraisalBookSchedulesGBUK]
-  Where  [MarketCode]='GBUK' and [AppraisalBookPublishDate]=@EffectiveDate
-   and ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL "
 

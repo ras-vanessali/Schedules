@@ -52,7 +52,7 @@ return(rbind(CatData,SubcatData,MakeData))}
 ######################################## Make Data Merge & Clean ##################################################
 ###################################################################################################################
 ###################################################################################################################
-if(CountryCode == 'USA'){
+#if(CountryCode == 'USA'){
 ####### Prepare the candidate output list for Part 3 schedules ########
 ####### ClassId list = All - Out - OutR ########
 Out_make <- anti_join(AllClass,comb_Out %>% select(ClassificationId),by='ClassificationId') %>%
@@ -73,7 +73,7 @@ joinmap_make <-merge(rbind(CatMakemap,SubcatMakemap),ReportGrp,by='CategoryId')
 
 ######## Prepare the output mapping table for all makes schedules ########
 make_output<-merge(joinmap_make,Out_make,by=c('CategoryId','SubcategoryId')) %>% filter(!is.na(MakeId))
-}
+#}
 
 ###################################################################################################################
 ###################################################################################################################

@@ -55,26 +55,25 @@ write.csv(uploadTb3,paste(Sys.Date(),CountryCode,'ScheduleImport_VL.csv'),row.na
 } else{
   
 
-schedule_form<-rbind(MoMSchedules %>% select(ClassificationId,ModelYear,limit_fmv) %>%
+schedule_form<-rbind(rbind(Final_makeSched %>% select(ClassificationId,ModelYear,limit_fmv),MoMSchedules %>% select(ClassificationId,ModelYear,limit_fmv)) %>%
                        mutate(ScheduleType = 'FMV') %>% rename(CostPercent = limit_fmv,ClassificationID = ClassificationId),
-                     MoMSchedules %>% select(ClassificationId,ModelYear,limit_flv) %>%
+                     rbind(Final_makeSched %>% select(ClassificationId,ModelYear,limit_flv),MoMSchedules %>% select(ClassificationId,ModelYear,limit_flv)) %>%
                        mutate(ScheduleType = 'FLV') %>% rename(CostPercent = limit_flv,ClassificationID = ClassificationId)) %>%
   filter(ModelYear>=botyear & ModelYear<=topyear) %>%
   mutate(MarketCode = 'GBUK', AppreciationPercentage='', DepreciationPercentage='') %>%
   select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
 
-dep<-spread(applydep %>% select(ClassificationId,ModelYear,rate),ModelYear,rate) %>%
+depapp.make<-Final_makeSched %>% select(-limit_flv) %>% filter(ModelYear %in% c('App','Dep')) %>% rename(rate = limit_fmv)
+
+dep<-spread(rbind(applydep %>% select(ClassificationId,ModelYear,rate),depapp.make),ModelYear,rate) %>%
   rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
   mutate(MarketCode = 'GBUK', ScheduleType ='FMV', ModelYear ='', CostPercent='') %>%
   select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
 
-app<-spread(applydep %>% select(ClassificationId,ModelYear,rate),ModelYear,rate) %>%
+app<-spread(rbind(applydep %>% select(ClassificationId,ModelYear,rate),depapp.make),ModelYear,rate) %>%
   rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
   mutate(MarketCode = 'GBUK', ScheduleType ='FLV', ModelYear ='', CostPercent='') %>%
   select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
-
-
-
 
 
 ### global
@@ -103,7 +102,7 @@ app_global<-spread(MoMSched.global %>% select(ClassificationId,ModelYear,limit_f
 excel_out <- rbind(global_out,dep_global,app_global,schedule_form,dep,app) %>% arrange(MarketCode, ClassificationID,ScheduleType,	ModelYear)
 
 
-write.csv(excel_out,paste('ClassificationModifySchedule',format(Sys.Date(),format='%Y%m%d'),month(publishDate),day(publishDate),'VL.csv',sep=''),row.names = F)
+write.csv(excel_out,paste('ClassificationModifySchedule',format(Sys.time(),format='%Y%m%d%H%M'),'VL.csv',sep=''),row.names = F)
 
   
 }
