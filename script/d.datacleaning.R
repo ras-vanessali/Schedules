@@ -5,46 +5,25 @@ str <-sort(c(0:9,0:9))
 CatDtUse <-data.frame(EOMList,str)
 indexUse<- CatDtUse[CatDtUse$EOMList==publishDate,]$str
 
-###split join level
-split.joinlevel<-function(input,dataload,brwtype){
-  select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
-                'ModelYear',	'SaleDate',	'EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
-                'SPvalue',	'CurrentABCost',	'Age',	'Flag',	'YearFlag',	'Schedule') 
-  select.var.brw<-c('BorrowSchedule',	'BorrowType')
 
-  Catlevel<-input %>% filter(Level2 =='Category') %>% select(-SubcategoryId,-MakeId)
-  Subcatlevel<-input %>% filter(Level2 == "SubcatGroup") %>% select(-MakeId)
-  Makelevel<-input %>% filter(Level2 =='Make')
-  
-  if(brwtype=='brw'){
-    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
-      select(c(select.var,select.var.brw)) 
-  
-    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
-      select(c(select.var,select.var.brw)) 
-  
-    MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(c(select.var,select.var.brw)) 
-  }
-  else{
-    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
-      select(select.var) 
-    
-    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
-      select(select.var) 
-    
-    MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(select.var) 
-  }
-  
-return(rbind(CatData,SubcatData,MakeData))}
+################# EDA of raw data ###################
+## number of sales
+EDAview.N<-uploadData %>%
+  filter(Flag =='inUse') %>%
+  group_by(SaleType,CategoryName,EffectiveDate) %>%
+  summarise(n=n())
 
+EDAview.N.trans<-spread(EDAview.N,EffectiveDate,n)
+EDAview.N.trans[is.na(EDAview.N.trans)]=0
+
+## average sp/m1
+EDAview.mean<-uploadData %>%
+  filter(Flag =='inUse') %>%
+  group_by(SaleType,CategoryName,EffectiveDate) %>%
+  summarise(meanValue = round(mean(SPvalue),digits =4))
+
+EDAview.mean.trans<-spread(EDAview.mean,EffectiveDate,meanValue)
+EDAview.mean.trans[is.na(EDAview.mean.trans)]=0.0000
 
 
 ###################################################################################################################
@@ -90,6 +69,7 @@ Datainput<-split.joinlevel(In,uploadData,'') %>%
   filter(as.Date(EffectiveDate)<=publishDate & Flag =='inUse') %>%
   mutate(CompId = factor(CompId)) %>%
   group_by(Schedule,SaleType) %>%
+  #summarise(mean = mean(SPvalue),st=sd(SPvalue))
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
 
 if(CountryCode =='USA'){
@@ -99,11 +79,14 @@ CatListing <- revised_listing %>%
   mutate(M1AppraisalBookPublishDate=as.factor(publishDate)) %>%
   select(CompId,CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear, SaleDate,EffectiveDate, Country,SalePrice, M1Value
          ,SaleType,M1AppraisalBookPublishDate,SaleAB, SPvalue,CurrentABCost,Age,Flag,YearFlag,Schedule) %>%
+  #mutate(SaleDate = as.Date(SaleDate),M1AppraisalBookPublishDate=as.Date(M1AppraisalBookPublishDate)) %>%
   filter(Flag == 'inUse') %>%
   group_by(Schedule) %>%
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
 
 }
+
+
 ###################################################################################################################
 ############################################# Part 2: Auction Borrow  #############################################
 ###################################################################################################################

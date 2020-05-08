@@ -62,7 +62,7 @@ for (j in 1:nSched_Ret){
       
       ################## schedules #########################
       for (k in 1:length(CurrentAge)){
-        RetailOutput_R[j,k]<-alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up)*(-CurrentAge[k]+scal)))+alpha[3]
+        RetailOutput_R[j,k]<-alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up_ret)*(-CurrentAge[k]+scal)))+alpha[3]
         
       }
     }
@@ -75,7 +75,7 @@ for (j in 1:nSched_Ret){
       
       for (k in 1:length(CurrentAge)){
         
-        RetailOutput_R[j,k] <- alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up)*(-CurrentAge[k]+scal)))
+        RetailOutput_R[j,k] <- alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up_ret)*(-CurrentAge[k]+scal)))
       }
       
     }
@@ -121,10 +121,10 @@ auc_regression <- rbind(SchedRetBorw %>% select(Schedule),Sched %>% select(Sched
 nSched_Auc<-dim(auc_regression)[1]
 
 checklist_auc<-rep(NA, nSched_Auc)
-alpha1.auc<-rep(NA,nSched_Auc)
-alpha1hat.auc<-rep(NA,nSched_Auc)
-alpha2.auc<-rep(NA,nSched_Auc)
-alpha3.auc<-rep(NA,nSched_Auc)
+#alpha1.auc<-rep(NA,nSched_Auc)
+#alpha1hat.auc<-rep(NA,nSched_Auc)
+#alpha2.auc<-rep(NA,nSched_Auc)
+#alpha3.auc<-rep(NA,nSched_Auc)
 coef_auc = matrix(0,nSched_Auc,3)
 ######################### Declare the variables #########################################################
 
@@ -150,7 +150,7 @@ for (j in 1:nSched_Auc){
       ################## schedules #########################
       for (k in 1:length(CurrentAge)){
         
-        AuctionOutput_A[j,k]<-alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up)*(-CurrentAge[k]+scal)))+alpha[3]
+        AuctionOutput_A[j,k]<-alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up_auc)*(-CurrentAge[k]+scal)))+alpha[3]
         
         #rownames(RetailOutput_R)<-retail_regression[,1]
         #colnames(RetailOutput_R)<-AgeName
@@ -163,28 +163,28 @@ for (j in 1:nSched_Auc){
       coef_auc [j,]<- c(alpha,0)
       for (k in 1:length(CurrentAge)){
         
-        AuctionOutput_A[j,k]<-alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up)*(-CurrentAge[k]+scal)))
+        AuctionOutput_A[j,k]<-alpha[1]/(1+exp(min(max(slopecap_low,alpha[2]),slopecap_up_auc)*(-CurrentAge[k]+scal)))
         
       }
       
     }
-    alpha2.auc[j]=alpha[2]
+    #alpha2.auc[j]=alpha[2]
     rownames(AuctionOutput_A)<-auc_regression[,1]
     colnames(AuctionOutput_A)<-AgeName 
     rownames(coef_auc)<-auc_regression[,1]
   }
 }
-alpha2_ls.auc = data.frame(auc_regression,alpha2.auc)
+#alpha2_ls.auc = data.frame(auc_regression,alpha2.auc)
 export_auction_regression = data.frame(auc_regression,checklist_auc)
 
 ################################################ 3.B Manage the output format ##############################################
 
 # trim the table - build first column
 outputAuction_RetB<-rownames_to_column(as.data.frame(AuctionOutput_A))
-#coef_auc_out<-rownames_to_column(as.data.frame(coef_auc))
+coef_auc_out<-rownames_to_column(as.data.frame(coef_auc))
 #name the row and columns
 colnames(outputAuction_RetB)<-c("Schedule",topyear:ext_botYr)
-#colnames(coef_auc_out)<-c("Schedule",'coef1','coef2','coef3')
+colnames(coef_auc_out)<-c("Schedule",'coef1','coef2','coef3')
 
 # transfer table from wide to long
 transOut_RetB<-gather(outputAuction_RetB,ModelYear,flv,as.character(topyear):as.character(ext_botYr),factor_key = TRUE) %>%
@@ -194,11 +194,13 @@ transOut_RetB$ModelYear <- as.numeric(as.character(transOut_RetB$ModelYear))
 
 print(if(nSched_Auc == dim(transOut_RetB)[1]/12){paste('Yes, the N is ', nSched_Auc)} else {'No'})
 
-
-
-
-
-
+### combine the retail and auction regression coefficients 
+regressionCoef<-rbind(coef_auc_out %>% mutate(expcoef2 = round(exp(coef2),digits=4),SaleType='Auction'),
+      coef_ret_out %>% mutate(expcoef2 = exp(coef2),SaleType='Retail')) %>%
+  mutate(coef1 = round(coef1,digits=4),
+         coef2 = round(coef2,digits=4),
+         coef3 = round(coef3,digits=4)) %>%
+  select(SaleType,Schedule,coef1,coef2,expcoef2,coef3)
 
 ###################################################################################################################
 ###################################################################################################################
@@ -215,7 +217,8 @@ for (j in 1:nSched_Auc){
   if(nrow(groupData)>0){
     
     fit<-lm(log(SaleAB)~Age,data=groupData)
-    ExpSlopeAuc[j]<-exp(min(fit$coefficients[2],slopecap_up))
+    ExpSlopeAuc[j]<-exp(min(fit$coefficients[2],slopecap_up_auc))
+    #ExpSlopeAuc[j]<-exp(fit$coefficients[2])
   }
 }
 
@@ -257,7 +260,7 @@ for (j in 1:nSched_Ret){
   if(nrow(groupData)>0){
     
     fit<-lm(log(SaleAB)~Age,data=groupData)
-    ExpSlopeRet[j]<-exp(min(fit$coefficients[2],slopecap_up))
+    ExpSlopeRet[j]<-exp(min(fit$coefficients[2],slopecap_up_ret))
   }
 }
 

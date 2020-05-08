@@ -7,7 +7,7 @@
 
 scal=3
 ## Model Year in use
-topyear = 2019 ## top model year
+topyear = 2020 ## top model year
 comingyr = topyear+1 ## top model year pulling from db, used for appreciation
 botyear = topyear-9 ## bottom model year
 ext_botYr = topyear-11 ## bottom model year of putting in regression
@@ -22,7 +22,7 @@ indexcap = 0.0300
 ## set the limit movement from last month
 limUp_MoM = 0.0400
 limDw_MoM = 0.0600
-limDw_MoM_spec = 0.1500
+limDw_MoM_spec = 0.1
 
 ## thresholds of #datapoints - use to move schedules from regression
 #t1<-3 t2<-6 t3<-10 t4<-15 t5<-21 t6<-28
@@ -58,7 +58,8 @@ LowerB = 0
 
 ## logistic growth regression slope cap
 slopecap_low = -1.5
-slopecap_up = -.1
+slopecap_up_auc = -.05
+slopecap_up_ret = -.02
 ## caps of appreciation and depreciation
 app_yrgap = 3.00
 appBound_upp = 0.15
@@ -112,30 +113,30 @@ GlobalClassId=1
 setwd(file_path)  
 ################################################# Read tabs in file ##########################################################
 ### load the inputfeed file
-In<-data.frame(read_excel(excelfile,sheet='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule)
-InR<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
+In<-data.frame(read.xlsx(excelfile,sheetName='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule)
+InR<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='RetailBorrowAuction')
-InA<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
+InA<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='AuctionBorrowRetail')
-InB<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
+InB<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='BorrowBoth')
-In.brwcrane<-data.frame(read_excel(excelfile,sheet='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
+In.brwcrane<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(str_detect(Schedule,'Crane'))
 
 ### load the application file
-Out<-data.frame(read_excel(excelfile,sheet='Out')) %>% filter(Country==CountryCode)
-OutR<-data.frame(read_excel(excelfile,sheet='OutR')) %>% filter(Country==CountryCode)
+Out<-data.frame(read.xlsx(excelfile,sheetName='Out')) %>% filter(Country==CountryCode)
+OutR<-data.frame(read.xlsx(excelfile,sheetName='OutR')) %>% filter(Country==CountryCode)
 
 ### Application tab
 comb_Out<-rbind(Out %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId, Level2,Plot),OutR %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId,Level2,Plot))
 
 ### load the Sched file
-Sched<-data.frame(read_excel(excelfile,sheet='Sched')) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax) 
-SchedR<-data.frame(read_excel(excelfile,sheet='SchedR')) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax,BorrowSchedule,BorrowType) 
+Sched<-data.frame(read.xlsx(excelfile,sheetName='Sched',startRow=6)) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax) 
+SchedR<-data.frame(read.xlsx(excelfile,sheetName='SchedR',startRow=6)) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax,BorrowSchedule,BorrowType) 
 SchedFullList<-rbind(Sched,SchedR %>% select(-BorrowSchedule,-BorrowType))
 
 ### load make adjustments related tabs
-Mlist<-data.frame(read_excel(excelfile,sheet='MList')) %>% filter(Country==CountryCode)
+Mlist<-data.frame(read.xlsx(excelfile,sheetName='MList')) %>% filter(Country==CountryCode) %>% select(ClassificationId,ApplyToAllCSMs,Country,CategoryId,SubcategoryId,CategoryName,SubcategoryName)
 # Category who needs to run make level schedule
 MakeAdj_CatL <- Mlist %>% distinct(CategoryId)
 CategoryId <- cbind(MakeAdj_CatL, MakeAdj_CatL)
@@ -221,3 +222,44 @@ elapsed_months <- function(end_date, start_date) {
   sd <- as.POSIXlt(start_date)
   12 * (ed$year - sd$year) + (ed$mon - sd$mon)
 }
+
+###split join level
+split.joinlevel<-function(input,dataload,brwtype){
+  select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
+                'ModelYear',	'SaleDate',	'EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
+                'SPvalue',	'CurrentABCost',	'Age',	'Flag',	'YearFlag',	'Schedule') 
+  select.var.brw<-c('BorrowSchedule',	'BorrowType')
+  
+  Catlevel<-input %>% filter(Level2 =='Category') %>% select(-SubcategoryId,-MakeId)
+  Subcatlevel<-input %>% filter(Level2 == "SubcatGroup") %>% select(-MakeId)
+  Makelevel<-input %>% filter(Level2 =='Make')
+  
+  if(brwtype=='brw'){
+    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
+      mutate(str = str_sub(CompId,-1)) %>%
+      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
+      select(c(select.var,select.var.brw)) 
+    
+    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
+      mutate(str = str_sub(CompId,-1)) %>%
+      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
+      select(c(select.var,select.var.brw)) 
+    
+    MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(c(select.var,select.var.brw)) 
+  }
+  else{
+    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
+      mutate(str = str_sub(CompId,-1)) %>%
+      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
+      select(all_of(select.var)) 
+    
+    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
+      mutate(str = str_sub(CompId,-1)) %>%
+      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
+      select(all_of(select.var)) 
+    
+    MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(all_of(select.var)) 
+  }
+  
+  return(rbind(CatData,SubcatData,MakeData))}
+

@@ -465,9 +465,9 @@ if (CountryCode == 'USA'){
   mutate(rate = Adjfmv/Adjflv,
          YTD = ModelYear)%>%
   filter (rate < 1+capChannel) %>%
-  mutate(yearAge = ifelse(YTD<=chanyr,"newer",ifelse(YTD>=chanyr*2,"elder","check"))) %>%
-  mutate(ageGroup = ifelse(yearAge=='check',ifelse(UnitsRet<retBelieve,'elder',ifelse(UnitsRet>=UnitsAuc,'newer','elder')),yearAge)) %>%
-  mutate(schedule = ifelse(ageGroup=='elder',Adjflv*(1+capChannel),Adjfmv/(1+capChannel))) %>%
+  mutate(yearAge = ifelse(YTD<=chanyr,"retDrive",ifelse(YTD>=chanyr*2,"aucDrive","check"))) %>%
+  mutate(ageGroup = ifelse(yearAge=='check',ifelse(UnitsRet<retBelieve,'aucDrive',ifelse(UnitsRet>=UnitsAuc,'retDrive','aucDrive')),yearAge)) %>%
+  mutate(schedule = ifelse(ageGroup=='aucDrive',Adjflv*(1+capChannel),Adjfmv/(1+capChannel))) %>%
   select(Schedule,ModelYear,ageGroup,schedule)
   
 } else{
@@ -475,9 +475,9 @@ if (CountryCode == 'USA'){
   mutate(rate = Adjfmv/Adjflv,
          YTD = ModelYear)%>%
   filter (rate < 1+capChannel) %>%
-  mutate(yearAge = ifelse(str_detect(Schedule,'RbA'),"newer","elder")) %>%
-  mutate(ageGroup = ifelse(yearAge=='check',ifelse(UnitsRet<retBelieve,'elder',ifelse(UnitsRet>=UnitsAuc,'newer','elder')),yearAge)) %>%
-  mutate(schedule = ifelse(ageGroup=='elder',Adjflv*(1+capChannel),Adjfmv/(1+capChannel))) %>%
+  mutate(ageGroup = ifelse(str_detect(Schedule,'RbA'),"retDrive","aucDrive")) %>%
+  #mutate(ageGroup = ifelse(UnitsRet<retBelieve,'aucDrive',ifelse(UnitsRet>=UnitsAuc,'retDrive','aucDrive'))) %>%
+  mutate(schedule = ifelse(ageGroup=='aucDrive',Adjflv*(1+capChannel),Adjfmv/(1+capChannel))) %>%
   select(Schedule,ModelYear,ageGroup,schedule)
 
 }
@@ -489,7 +489,7 @@ assignVal<-merge(bindCaptb,checkChannel,by=c("Schedule","ModelYear"),all.x =T)
 assignVal[is.na(assignVal)] <- 0
 
 for (i in 1:nrow(assignVal)){
-  assignVal$chann[i] = if(assignVal$ageGroup[i] == 'elder'){
+  assignVal$chann[i] = if(assignVal$ageGroup[i] == 'aucDrive'){
     assignVal$schedule[i]
   }
   
@@ -498,7 +498,7 @@ for (i in 1:nrow(assignVal)){
   } 
   
   
-  assignVal$chann2[i] = if(assignVal$ageGroup[i] == 'newer'){
+  assignVal$chann2[i] = if(assignVal$ageGroup[i] == 'retDrive'){
     assignVal$schedule[i]
   }
   else{
@@ -595,3 +595,4 @@ checkedOutput %>%
 ########################### 5.Prepare the final table to join to application mappping
 ScheduleOut <- checkedOutput %>%
   select('Schedule', 'ModelYear','Adjfmv','Adjflv')
+

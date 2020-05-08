@@ -7,7 +7,7 @@ UK_dataload<-"
 			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-2,GETDATE()))-2, -1) as date)
 			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
 
-            Declare @topyear INT = 2019
+            Declare @topyear INT = 2020
             Declare @compingyr INT = @topyear+1
 					  Declare @botyear INT =  @compingyr-10
 					  Declare @ext_botYr INT = @compingyr-12
@@ -64,7 +64,7 @@ UK_dataload<-"
                   ET.[MarketCode]='GBUK' and
                  (BIC.SaleType='retail' AND BIC.CustomerId in (SELECT [CustomerID]
 														FROM [ras_sas].[BI].[Customers]
-														where [IsUsedForUKABCost]='Y'))
+														where [IsUsedForABCostGBUK]='Y'))
 
                 AND BIC.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                 AND BIC.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
@@ -145,7 +145,7 @@ MakeAdjust_dataloadUK<-
 			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
 				  Declare @month6 Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-8, -1) AS date) 
 
-            Declare @topyear INT = 2019
+            Declare @topyear INT = 2020
             Declare @compingyr INT = @topyear+1
 					  Declare @botyear INT =  @compingyr-10
 					  Declare @ext_botYr INT = @compingyr-12
@@ -208,7 +208,7 @@ Declare @Age_f INT = 12
                   ET.[MarketCode]='GBUK' and
                  (BIC.SaleType='retail' AND BIC.CustomerId in (SELECT [CustomerID]
 														FROM [ras_sas].[BI].[Customers]
-														where [IsUsedForUKABCost]='Y'))
+														where [IsUsedForABCostGBUK]='Y'))
 
                 AND BIC.CategoryId =?
                 AND BIC.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various

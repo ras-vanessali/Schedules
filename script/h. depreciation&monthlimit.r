@@ -145,7 +145,6 @@ MoM_deprapr<-merge(applydep,LM_deprapr,by=c("ClassificationId",'ModelYear'),all.
                             ifelse(ModelYear=='App', MoMlimit_depappr(LMvalue,rate,ApprMoMLimit),MoMlimit_depappr(LMvalue,rate,DeprMoMLimit)))) %>%
   arrange(ClassificationId,ModelYear)
 
-MoM_deprapr %>% filter(str_detect(Schedule,'Cranes') & ModelYear =='Dep')
 
 ###################################################################################################################
 ###################################################################################################################
@@ -176,8 +175,10 @@ depr_constr<- merge(Sched_joinDepr %>% filter(ModelYear == botyear +1) %>% selec
                     by='ClassificationId') %>%
   mutate(Adjfmv = pmin(pmax(Adjfmv.y *(1 + rate) - endYrRate, Adjfmv.x),Adjfmv.y *(1 + rate) + endYrRate),
          Adjflv = pmin(pmax(Adjflv.y *(1 + rate) - endYrRate, Adjflv.x),Adjflv.y *(1 + rate) + endYrRate)) %>%
+#  mutate(Adjfmv = pmin(pmax(Adjfmv.y *(1 + rate) * 1.03, Adjfmv.x),Adjfmv.y *(1 + rate) / 1.03),
+#         Adjflv = pmin(pmax(Adjflv.y *(1 + rate) * 1.03, Adjflv.x),Adjflv.y *(1 + rate) /1.03)) %>%  
   select(ClassificationId,Adjfmv, Adjflv) 
-
+# adjfmv.y*(1+rate)*1 to adjfmv.y*(1+rate)*(1+0.05)
 ## join back to schedule table and replace the second last year value
 CapSchedule<-rbind(merge(depr_constr,map_to_sched %>% filter(ModelYear == botyear +1) %>% select(-Adjfmv, -Adjflv),by='ClassificationId') %>%
   select(Schedule, ModelYear, Adjfmv, Adjflv, ClassificationId, everything()),
@@ -213,12 +214,38 @@ lastM_schedule<-LastMonth_Sched %>%
   distinct()
 
 
+'              Temporary use for 04/30 effective date - rebasing                    '
+
+
+RebaseTemp_1<-merge(CapSchedule %>% filter(ModelYear==botyear), lastM_schedule %>% filter(ModelYear==botyear-1),by=c("ClassificationId"),all.x=T) %>%
+  mutate(borrowgrp = ifelse((str_detect(Schedule,'RbA') | str_detect(Schedule,'AbR') | str_detect(Schedule,'bRA')),'Y','N'))%>%
+  mutate(CurrentFmv=ifelse(is.na(CurrentFmv),Adjfmv/(1+x),CurrentFmv),
+         CurrentFlv=ifelse(is.na(CurrentFlv),Adjflv/(1+x),CurrentFlv)) %>%
+  select(ClassificationId, Schedule, borrowgrp,Adjfmv,Adjflv,CurrentFmv,CurrentFlv)
+
+RebaseTemp_2<-merge(RebaseTemp_1,MoM_deprapr %>% filter(ModelYear=='Dep'),by=c("ClassificationId"),all.x=T) %>%
+  replace(is.na(.),depBound_upp) %>%
+  mutate(Adj2011Fmv = ifelse(CurrentFmv<Adjfmv | borrowgrp=='Y',pmax(pmin(Adjfmv, CurrentFmv * (1 + limit_rate)*.99*(1+x)),CurrentFmv * (1+limit_rate)*(.99)*(1-x)),Adjfmv),
+         Adj2011Flv = ifelse(CurrentFlv<Adjflv | borrowgrp=='Y',pmax(pmin(Adjflv, CurrentFlv * (1 + limit_rate)*.99*(1+x)),CurrentFlv * (1+limit_rate)*(.99)*(1-x)),Adjflv)) %>%
+  select(ClassificationId, Adj2011Fmv,Adj2011Flv) %>%
+  mutate(ModelYear =botyear)
+
+
+CapSchedule.upd <- merge(CapSchedule,RebaseTemp_2,by=c('ClassificationId','ModelYear'),all.x=T) %>%
+  mutate(Adjfmv = ifelse(ModelYear == botyear,Adj2011Fmv,Adjfmv),
+         Adjflv = ifelse(ModelYear == botyear,Adj2011Flv,Adjflv)) %>%
+  select(-Adj2011Fmv,-Adj2011Flv)%>%
+  arrange(ClassificationId ,desc(ModelYear))
+
+'              Temporary use for 04/30 effective date - rebasing                    '
+
+
 ### join to last month value and limit the movement
-MoMSchedules <- merge(CapSchedule,lastM_schedule,by=c("ClassificationId","ModelYear"),all.x=T) %>%
-  #mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
-  #       limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(CategoryId == 2616, MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
-  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,ifelse(ClassificationId %in% catchupSched, Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM))),
-         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(ClassificationId %in% catchupSched, Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
+MoMSchedules <- merge(CapSchedule.upd,lastM_schedule,by=c("ClassificationId","ModelYear"),all.x=T) %>%
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,ifelse(ModelYear==botyear, MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM))),
+         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(ModelYear==botyear, MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
+ # mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,ifelse(ClassificationId %in% catchupSched, Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM))),
+#         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(ClassificationId %in% catchupSched, Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
   #### One time change for market condition in March,2020
  # mutate(limit_flv = ifelse(CategoryId %in% c(2515, 360, 29, 362, 15, 6, 2509, 2505, 32, 2599, 164),limit_flv * .96, ifelse(CategoryId ==2616, limit_flv * .90,limit_flv * .93))) %>%
 arrange(ClassificationId,desc(ModelYear))

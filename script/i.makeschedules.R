@@ -16,7 +16,7 @@ makeRowNum<-makeAdj_calDt%>%
 MakeSFcalc_Sched<-makeRowNum %>%
   group_by(Schedule,MakeId,MakeName,SaleType) %>%
   # base scale factor
-  summarise(Makerate_sched = mean(spValue),
+  summarise(Makerate_sched = round(mean(spValue),digits=4),
             nMake_sched = max(rowNum),
             Dateback = min(as.Date(SaleDate)))
   
@@ -73,38 +73,65 @@ MinDelta<-trans_MakeSFcalc %>%
 ## outer join the make output to the calculated scale factor, assign 1 to those with no comps
 joinMakeOut<-merge(MinDelta,make_output,by=c('Schedule','MakeId','MakeName'),all.y=TRUE) %>% 
   select(Schedule,ClassificationId, CategoryId,CategoryName,SubcategoryId,SubcategoryName, MakeId,MakeName,chancheck_ret,chancheck_auc) %>%
-  rename(Retail=chancheck_ret,Auction=chancheck_auc)
+  mutate(Retail=round(chancheck_ret,digits=4),Auction=round(chancheck_auc,digits=4)) %>%
+  select(-chancheck_ret,-chancheck_auc)
 
 joinMakeOut[is.na(joinMakeOut)]<-1
-write.csv(joinMakeOut,paste(publishDate," MakeAdjuster.csv"))
-write.csv(MakeSFcalc_Sched,paste(publishDate," MakeDateComps.csv"))
+
 ################## 11.C Apply make adjusters to each model year
+joinMakeSF<-merge(ScheduleOut,joinMakeOut,by='Schedule') %>% arrange(Schedule,ClassificationId,desc(ModelYear))
 
-## list the index to weaken the scale factor for newer years
-yrAdj = data.frame(ModelYear = topyear:botyear, indexYrMake = c(0.1,0.25,0.4,0.55,0.7,0.85,1,1,1,1))
+## calculate deltas betweent the top year and 7th year
+deltaMakeAdjcalc = merge(joinMakeSF %>% filter(ModelYear == topyear) %>% select(ClassificationId,Schedule,Adjflv,Adjfmv,Retail,Auction),
+                         joinMakeSF %>% filter(ModelYear == topyear -6) %>% select(ClassificationId,Adjflv,Adjfmv),by='ClassificationId') %>%
+  mutate(parent.delta.flv = Adjflv.x - Adjflv.y,
+         parent.delta.fmv = Adjfmv.x - Adjfmv.y) %>%
+  mutate(topy.adj.flv = ((Auction-1)*brwsched_move+1)*Adjflv.x,
+         topy.adj.fmv = ((Retail-1)*brwsched_move+1)*Adjfmv.x,
+         child.delta.flv = topy.adj.flv  - Adjflv.y *Auction,
+         child.delta.fmv = topy.adj.fmv  - Adjfmv.y *Retail) %>%
+  select(ClassificationId,Schedule,topy.adj.flv,topy.adj.fmv,parent.delta.flv,parent.delta.fmv,child.delta.flv,child.delta.fmv)
+
+## join the results back to the table with full years
+joinMakeSF.upd<-merge(joinMakeSF,deltaMakeAdjcalc,by='ClassificationId') %>% arrange(ClassificationId,desc(ModelYear))
+
+## validation
+dim(joinMakeOut)[1]==dim(joinMakeSF)[1]/10
+dim(joinMakeOut)[1]==dim(deltaMakeAdjcalc)[1]
+dim(joinMakeSF.upd)[1]==dim(joinMakeSF)[1]
 
 
-## Apply and calculate the adjusted scale factors for each model year
-MakeSF <- merge(joinMakeOut,yrAdj) %>% arrange(Schedule,ClassificationId,ModelYear) %>%
-  mutate(lamda = pmin(1,((month(publishDate)-6)/12)*phaseinFactor + indexYrMake)) %>%
-  mutate(Auction_Yr = ifelse(ModelYear <= topyear -phaseinAge, Auction, (Auction -1) * lamda + 1),
-         Retail_Yr = ifelse(ModelYear <= topyear -phaseinAge, Retail, (Retail -1) * lamda + 1)) 
+## interpolate the years between top year and 7th year
+for (i in 1:dim(joinMakeSF.upd)[1]){
+  
+  ### Auction
+  ## deprecation rate by year
+  joinMakeSF.upd$diffRate.auc[i] = ifelse(joinMakeSF.upd$ClassificationId[i] == joinMakeSF.upd$ClassificationId[i-1] &
+                                        joinMakeSF.upd$ModelYear[i] == joinMakeSF.upd$ModelYear[i-1]-1,
+                                         round((joinMakeSF.upd$Adjflv[i-1] - joinMakeSF.upd$Adjflv[i])/joinMakeSF.upd$parent.delta.flv[i],digits=4),0)
+  
+  ## adjusted schedule
+  joinMakeSF.upd$adjustrate.auc[i] = joinMakeSF.upd$topy.adj.flv[i]
+  joinMakeSF.upd$adjustrate.auc[i] = ifelse(joinMakeSF.upd$ModelYear[i] <= topyear -6, joinMakeSF.upd$Adjflv[i]*joinMakeSF.upd$Auction[i],
+                                           ifelse(joinMakeSF.upd$ModelYear[i] == topyear, joinMakeSF.upd$topy.adj.flv[i],
+                                                 joinMakeSF.upd$adjustrate.auc[i-1]-joinMakeSF.upd$child.delta.flv[i]*joinMakeSF.upd$diffRate.auc[i]))
+  ### Retail
+  ## deprecation rate by year
+  joinMakeSF.upd$diffRate.ret[i] = ifelse(joinMakeSF.upd$ClassificationId[i] == joinMakeSF.upd$ClassificationId[i-1] &
+                                            joinMakeSF.upd$ModelYear[i] == joinMakeSF.upd$ModelYear[i-1]-1,
+                                          round((joinMakeSF.upd$Adjfmv[i-1] - joinMakeSF.upd$Adjfmv[i])/joinMakeSF.upd$parent.delta.fmv[i],digits=4),0)
+  
+  ## adjusted schedule
+  joinMakeSF.upd$adjustrate.ret[i] = joinMakeSF.upd$topy.adj.fmv[i]
+  joinMakeSF.upd$adjustrate.ret[i] = ifelse(joinMakeSF.upd$ModelYear[i] <= topyear -6, joinMakeSF.upd$Adjfmv[i]*joinMakeSF.upd$Retail[i],
+                                            ifelse(joinMakeSF.upd$ModelYear[i] == topyear, joinMakeSF.upd$topy.adj.fmv[i],
+                                                   joinMakeSF.upd$adjustrate.ret[i-1]-joinMakeSF.upd$child.delta.fmv[i]*joinMakeSF.upd$diffRate.ret[i]))
+}
 
-
-
-################## 12.A Join the make adjusters back to cat/subcat schedules and calculate base make level schedules
-
-### calculate the makelevel schedules
-joMakeAdjData <- merge(ScheduleOut,MakeSF,by=c('Schedule','ModelYear'),all.y=T) %>%
-  mutate(fmv_make = Adjfmv*Retail_Yr,
-         flv_make = Adjflv*Auction_Yr) %>%
-  select(Schedule,ClassificationId, CategoryId,SubcategoryName, MakeId, MakeName,ModelYear,
-         Retail,Auction,Retail_Yr,Auction_Yr,Adjfmv,Adjflv,fmv_make,flv_make)%>%
-  arrange(Schedule,ClassificationId,MakeId,ModelYear)
-
-#write.csv(joMakeAdjData,'20190313 MakeSchedules.csv')
-AllTmake <- joMakeAdjData %>% select(Schedule,ClassificationId, CategoryId,SubcategoryName, MakeName,MakeId, ModelYear, fmv_make, flv_make)
-
+AllTmake <-joinMakeSF.upd %>%
+  select(ClassificationId,Schedule.x,CategoryId,SubcategoryName, MakeName,MakeId, ModelYear,adjustrate.auc,adjustrate.ret) %>%
+  rename(flv_make=adjustrate.auc,fmv_make=adjustrate.ret,Schedule=Schedule.x) %>%
+  arrange(ClassificationId,desc(ModelYear))
 
 ###################################################################################################################
 ###################################################################################################################
@@ -120,8 +147,6 @@ AllTmake <- joMakeAdjData %>% select(Schedule,ClassificationId, CategoryId,Subca
 
 
 
-'              Temporary use for 04/30 effective date - rebasing                    '
-
 
 ## Limit by last month 
 lastM_schedule_make<-LastMonth_Sched %>%
@@ -130,32 +155,37 @@ lastM_schedule_make<-LastMonth_Sched %>%
   distinct()
 
 
+'              Temporary use for 04/30 effective date - rebasing                    '
 
-RebaseTemp_1make<-merge(AllTmake %>% filter(ModelYear==botyear+1), lastM_schedule_make %>% filter(ModelYear==botyear),by=c("ClassificationId"),all.x=T) %>%
+
+RebaseTemp_1make<-merge(AllTmake %>% filter(ModelYear==botyear), lastM_schedule_make %>% filter(ModelYear==botyear-1),by=c("ClassificationId"),all.x=T) %>%
   mutate(CurrentFmv=ifelse(is.na(CurrentFmv),fmv_make/(1+x),CurrentFmv),
          CurrentFlv=ifelse(is.na(CurrentFlv),flv_make/(1+x),CurrentFlv)) %>%
   select(ClassificationId, Schedule, fmv_make,flv_make,CurrentFmv,CurrentFlv)
 
 RebaseTemp_2make<-merge(RebaseTemp_1make,combDeprApr %>% filter(ModelYear=='Dep'),by=c("Schedule"),all.x=T) %>%
   replace(is.na(.),depBound_upp) %>%
-  mutate(Adj2010Fmv = pmax(pmin(fmv_make, CurrentFmv * (1 + rate)*(1+x)),CurrentFmv * (1+rate)*(1-x)),
-         Adj2010Flv = pmax(pmin(flv_make, CurrentFlv * (1 + rate)*(1+x)),CurrentFlv * (1+rate)*(1-x))) %>%
-  select(ClassificationId, Adj2010Fmv,Adj2010Flv) %>%
-  mutate(ModelYear =botyear+1)
+  mutate(Adj2011Fmv = ifelse(CurrentFmv<fmv_make,pmax(pmin(fmv_make, CurrentFmv * (1 + rate)*.99*(1+x)),CurrentFmv * (1+rate)*(.99)*(1-x)),fmv_make),
+         Adj2011Flv = ifelse(CurrentFlv<flv_make,pmax(pmin(flv_make, CurrentFlv * (1 + rate)*.99*(1+x)),CurrentFlv * (1+rate)*(.99)*(1-x)),flv_make)) %>%
+  select(ClassificationId, Adj2011Fmv,Adj2011Flv) %>%
+  mutate(ModelYear =botyear)
 
 
 AllTmake_new <- merge(AllTmake,RebaseTemp_2make,by=c('ClassificationId','ModelYear'),all.x=T) %>%
-  mutate(Adjfmv = ifelse(ModelYear == botyear+1,Adj2010Fmv,fmv_make),
-         Adjflv = ifelse(ModelYear == botyear+1,Adj2010Flv,flv_make)) %>%
-  select(-Adj2010Fmv,-Adj2010Flv)
+  mutate(Adjfmv = ifelse(ModelYear == botyear,Adj2011Fmv,fmv_make),
+         Adjflv = ifelse(ModelYear == botyear,Adj2011Flv,flv_make)) %>%
+  select(-Adj2011Fmv,-Adj2011Flv)
+
+'              Temporary use for 04/30 effective date - rebasing                    '
 
 
 MoMlimit<-merge(AllTmake_new,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
-  #mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
-  #       limit_flv = ifelse(is.na(CurrentFlv),flv_make,ifelse(CategoryId ==2616,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM)))) %>%
-  
-  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,fmv_make),
-         limit_flv = ifelse(is.na(CurrentFlv),flv_make,flv_make)) %>%
+ # mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
+ #        limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(CategoryId ==2616,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,ifelse(ModelYear==botyear, MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM))),
+         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(ModelYear==botyear, MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
+ # mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,fmv_make),
+ #        limit_flv = ifelse(is.na(CurrentFlv),flv_make,flv_make)) %>%
   #### One time change for market condition in March,2020
   #mutate(limit_flv = ifelse(CategoryId %in% c(2515, 360, 29, 362, 15, 6, 2509, 2505, 32, 2599, 164),limit_flv * .96, ifelse(CategoryId ==2616, limit_flv * .90,limit_flv * .93)))%>%
   arrange(ClassificationId,ModelYear)

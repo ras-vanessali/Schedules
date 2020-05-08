@@ -14,21 +14,23 @@ library(dplyr)
 library(tidyr)
 library(tibble)
 library(lubridate)
-library(readxl)
+library(xlsx)
+#library(readxl)
 library(stringr)
 
 # country
-#CountryCode = 'GBR'
-CountryCode = 'USA'
+CountryCode = 'GBR'
+#CountryCode = 'USA'
 # db enviroment & connect
-#DBserver = 'production' 
-DBserver = 'rasquery'
+DBserver = 'production' 
+#DBserver = 'rasquery'
+#DBserver ='gfdev04.rasgcp.net'
 
 
 ## read input excel file and create a plot for storing the plots
 file_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules/doc"
 setwd(file_path)  
-excelfile = '20200331 SchedulesManagement.xlsx'
+excelfile = '20200506 SchedulesManagement.xlsx'
 plotFolder = paste("Plots",Sys.Date())
 dir.create(plotFolder)
 
@@ -40,6 +42,8 @@ runa<-parse('a.input&func.r')
 eval(runa)
 
 channel<-odbcConnect(DBserver)
+
+starttime_dtload<-Sys.time()
 ## run sql queries
 if (CountryCode == 'USA'){
   setwd(scripts_path) 
@@ -67,11 +71,9 @@ if (CountryCode == 'USA'){
   AllClass <- sqlQuery(channel,AllClass)
   ReportGrp <-sqlQuery(channel,ReportGrp)
 }
+end_time_dtload <- Sys.time()
+end_time_dtload - starttime_dtload
 
-
-####
-catchupSched<-c(328,	90456,	90457,	90459,	68584,	71815,	40,	66831,	83867,	66824,	66825,	37117,	46,	
-              90458,	90455,	101043,	50844,	47,	90454,	52,	66826,	72115,		84552,	66830,	3,	34,	17,	12)
 ####
 #publishDate = as.Date('2019-08-31')
 thirdLastM<-as.Date(publishDate%m-% months(1)- days(day(publishDate)))
@@ -95,25 +97,49 @@ runj<-parse('j.upload&plots.r')
 
 ## Execute
 ## USA
+start_time_r <- Sys.time()
 if (CountryCode == 'USA'){
   eval(runc)
+  print('Listing is done')
   eval(rund)
+  print('Data cleaning is done')
   eval(rune)
+  print('Stats model is done')
   eval(runf)
+  print('Adjustments is done')
   eval(rung)
+  print('Violation check is done')
   eval(runh)
+  print('Depreciation and MoM are done')
   eval(runi)
+  print('Make Adjusters is done')
   setwd(file_path)  
   eval(runj)
+  setwd(file_path)  
+  write.xlsx2(as.data.frame(joinMakeOut),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjusters',row.names = F)
+  write.xlsx2(as.data.frame(MakeSFcalc_Sched),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjCalc',append=T,row.names = F)
+  write.xlsx2(as.data.frame(list_reductfact),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'ListingReduction',append=T,row.names = F)
+  write.xlsx(regressionCoef,file = paste(publishDate, 'Coefficients.xlsx'), sheetName='Sheet1',row.names=F)
 } else{
   
   eval(rund)
+  print('Data cleaning is done')
   eval(rune)
+  print('Stats model is done')
   eval(runf)
+  print('Adjustments is done')
   eval(rung)
+  print('Violation check is done')
   eval(runh)
+  print('Depreciation and MoM are done')
   eval(runi)
+  print('Make Adjusters is done')
   setwd(file_path)  
   eval(runj)
+  write.xlsx2(as.data.frame(joinMakeOut),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjusters',row.names = F)
+  write.xlsx2(as.data.frame(MakeSFcalc_Sched),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjCalc',append=T,row.names = F)
+  write.xlsx(regressionCoef,file = paste(publishDate, 'Coefficients.xlsx'), sheetName='Sheet1',row.names=F)
 }
 
+end_time_r <- Sys.time()
+end_time_r - start_time_r
