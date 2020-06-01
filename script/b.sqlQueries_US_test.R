@@ -76,21 +76,21 @@ US_dataload<-"SET NOCOUNT ON
                        AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
 										   AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24) 
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
-                       or (SaleType='retail' AND IsUsedForComparablesUSNA='Y')))     
+                       or (SaleType='retail' AND IsUsedForComparables='Y')))     
                     AND CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                     AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
 					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')  
 					          AND NOT (modelid = 40413)
-                    AND SaleDate >@dateStart AND saledate<=@dateEnd 
+                    --AND SaleDate >@dateStart AND saledate<=@dateEnd 
+                    and SaleDate>='2019-05-01' and SaleDate<='2020-04-30'
                     --and categoryid in (2606,2612,30,2515,2616)
                     --AND SaleDate >='2018-09-01' AND saledate<='2019-08-31'
                     AND ModelYear <= @compingyr 
                     and ModelYear>= CASE WHEN categoryid in (2605,2603,2608,2604,2606)  THEN @year_20 ELSE @dep_endyr END
                     AND [SalePriceSF]>100
                     AND CurrentABCostUSNA is not NULL 
-                    AND M1PrecedingFmv IS NOT NULL
-                    AND M1PrecedingFlv IS NOT NULL
-                    AND M1PrecedingABCostUSNA is not NULL
+                    AND M1PrecedingFlv is not NULL
+                    AND M1PrecedingFmv is not NULL
                     AND Option15 is NULL "
 
 ###################################### Input listing data for Cranes #########################################
@@ -234,11 +234,12 @@ Drop Table If exists #Data
                    ( ([source]='internet' AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
 										   AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24)
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
-                    or (SaleType='retail' AND IsUsedForComparablesUSNA='Y')))     
+                    or (SaleType='retail' AND IsUsedForComparables='Y')))     
                     AND CategoryId =?
 					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')         
 					           AND NOT (modelid = 40413)
-                    AND EOMONTH(SaleDate)>=@dateStart AND EOMONTH(SaleDate)<@dateEnd
+                   -- AND EOMONTH(SaleDate)>=@dateStart AND EOMONTH(SaleDate)<@dateEnd
+                   and SaleDate>='2017-05-01' and SaleDate<='2020-04-30'
                     AND ModelYear <= @topyear and ModelYear>=@ext_botYr
                     AND [SalePriceSF]>100
                     AND CurrentABCostUSNA is not NULL 
@@ -263,7 +264,8 @@ Drop Table If exists #M1Value
       Where CategoryId =?
             AND SubcategoryName is NOT NULL
 	          AND MakeId is null                                                       
-            AND AppraisalBookPublishDate>=@dateStart AND AppraisalBookPublishDate<@dateEnd
+            --AND AppraisalBookPublishDate>=@dateStart AND AppraisalBookPublishDate<@dateEnd
+            and AppraisalBookPublishDate>='2019-04-01' and AppraisalBookPublishDate<='2020-04-30'
             AND ModelYear <= @topyear and ModelYear>=@ext_botYr
 
 
@@ -305,7 +307,8 @@ SELECT [ClassificationId]
       ,[FmvSchedulePercentage]/100 as CurrentFmv
       ,[FlvSchedulePercentage]/100 as CurrentFlv
   FROM [ras_sas].[BI].[AppraisalBookClassificationValuesUSNA]
-  WHERE [AppraisalBookPublishDate] = @EffectiveDate
+  WHERE --[AppraisalBookPublishDate] = @EffectiveDate
+   [AppraisalBookPublishDate] = '2020-03-31'
   AND (NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%') OR [ClassificationId]=1)
   AND ModelId is null 
   AND ModelYear Between 2008 And 2021"
@@ -320,7 +323,8 @@ SELECT [ClassificationId]
       ,[FLVAppreciationPercentage]/100 AS Appreciation
       ,[FLVDepreciationPercentage]/100 AS Depreciation
   FROM [ras_sas].[BI].[AppraisalBookSchedulesUSNA]
-  Where [AppraisalBookPublishDate] = @EffectiveDate
+  Where --[AppraisalBookPublishDate] = @EffectiveDate
+   [AppraisalBookPublishDate] = '2020-03-31'
   AND ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL "
 
 

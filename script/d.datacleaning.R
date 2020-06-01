@@ -73,17 +73,17 @@ Datainput<-split.joinlevel(In,uploadData,'') %>%
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
 
 if(CountryCode =='USA'){
-### Listing - Join in Category level 
-CatListing <- revised_listing %>%
-  ### Used for Feb to Nov 2019: bring in caterpillar data 
-  mutate(M1AppraisalBookPublishDate=as.factor(publishDate)) %>%
-  select(CompId,CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear, SaleDate,EffectiveDate, Country,SalePrice, M1Value
-         ,SaleType,M1AppraisalBookPublishDate,SaleAB, SPvalue,CurrentABCost,Age,Flag,YearFlag,Schedule) %>%
-  #mutate(SaleDate = as.Date(SaleDate),M1AppraisalBookPublishDate=as.Date(M1AppraisalBookPublishDate)) %>%
-  filter(Flag == 'inUse') %>%
-  group_by(Schedule) %>%
-  filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
-
+  ### Listing - Join in Category level 
+  CatListing <- revised_listing %>%
+    ### Used for Feb to Nov 2019: bring in caterpillar data 
+    mutate(M1AppraisalBookPublishDate=as.factor(publishDate)) %>%
+    select(CompId,CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear, SaleDate,EffectiveDate, Country,SalePrice, M1Value
+           ,SaleType,M1AppraisalBookPublishDate,SaleAB, SPvalue,CurrentABCost,Age,Flag,YearFlag,Schedule) %>%
+    #mutate(SaleDate = as.Date(SaleDate),M1AppraisalBookPublishDate=as.Date(M1AppraisalBookPublishDate)) %>%
+    filter(Flag == 'inUse') %>%
+    group_by(Schedule) %>%
+    filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
+  
 }
 
 
@@ -152,7 +152,7 @@ for (j in 1:nSched_Auc){
   fit<-lm(SaleAB ~ Age,data = groupData)
   cooksd <- cooks.distance(fit)
   influential <- as.numeric(names(cooksd)[(cooksd > 40*mean(cooksd, na.rm=T) | cooksd >1)])
- 
+  
   leveragelist[[j]]<-groupData[influential,]
   
 }
@@ -178,9 +178,9 @@ Data.count3m <- Data.count %>%
   select(SaleType,Schedule,ModelYear)
 
 Data_all <- rbind(data.frame(merge(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(as.Date(EffectiveDate)>=thirdLastM))
-                      ,data.frame(anti_join(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(rowNum<=25)))
-  
-  
+                  ,data.frame(anti_join(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(rowNum<=25)))
+
+
 ### combine regular and borrow data for plots use only & exclude leverage points
 if (CountryCode == 'USA'){
   Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
@@ -189,4 +189,3 @@ if (CountryCode == 'USA'){
   Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all) %>% 
     filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 }
-

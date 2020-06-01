@@ -138,15 +138,24 @@ AllTmake <-joinMakeSF.upd %>%
 ########################################## 14.  MAKE ADJUSTMENTS - Checks #########################################
 ###################################################################################################################
 ###################################################################################################################
-################################################################## MoM limit  ################################################################## 
 
+Make_joinDepr<-merge(AllTmake,combDeprApr %>% filter(ModelYear=='Dep') %>% select(-ModelYear),by='Schedule') %>% arrange(ClassificationId,desc(ModelYear))
 
-#MoMlimit<-merge(AllTmake,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
-#  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
-#         limit_flv = ifelse(is.na(CurrentFlv),flv_make,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM))) 
+## modify the second last year if needed to prevent jump when rebase
+depr_constr.make<- merge(Make_joinDepr %>% filter(ModelYear == botyear +1) %>% select(ClassificationId,fmv_make,flv_make,ModelYear),
+                         Make_joinDepr %>% filter(ModelYear == botyear ) %>% select(ClassificationId,fmv_make,flv_make,ModelYear,rate),
+                    by='ClassificationId') %>%
+  mutate(fmv_make = pmin(pmax(fmv_make.y *(1 + rate) / (1+endYrRate), fmv_make.x),fmv_make.y *(1 + rate) * (1+endYrRate)),
+         flv_make = pmin(pmax(flv_make.y *(1 + rate) / (1+endYrRate), flv_make.x),flv_make.y *(1 + rate) *(1+endYrRate))) %>%  
+  select(ClassificationId,fmv_make, flv_make) 
 
+## join back to schedule table and replace the second last year value
+CapMakeSchedule<-rbind(merge(depr_constr.make,Make_joinDepr %>% filter(ModelYear == botyear +1) %>% select(-fmv_make, -flv_make),by='ClassificationId') %>%
+                     select(Schedule, ModelYear, fmv_make, flv_make, ClassificationId, everything()),
+                     Make_joinDepr %>% filter(ModelYear != botyear +1)) %>%
+  arrange(ClassificationId ,desc(ModelYear))
 
-
+######################################################### MoM Limitation #######################################################
 
 ## Limit by last month 
 lastM_schedule_make<-LastMonth_Sched %>%
@@ -155,46 +164,11 @@ lastM_schedule_make<-LastMonth_Sched %>%
   distinct()
 
 
-'              Temporary use for 04/30 effective date - rebasing                    '
 
-
-RebaseTemp_1make<-merge(AllTmake %>% filter(ModelYear==botyear), lastM_schedule_make %>% filter(ModelYear==botyear-1),by=c("ClassificationId"),all.x=T) %>%
-  mutate(CurrentFmv=ifelse(is.na(CurrentFmv),fmv_make/(1+x),CurrentFmv),
-         CurrentFlv=ifelse(is.na(CurrentFlv),flv_make/(1+x),CurrentFlv)) %>%
-  select(ClassificationId, Schedule, fmv_make,flv_make,CurrentFmv,CurrentFlv)
-
-RebaseTemp_2make<-merge(RebaseTemp_1make,combDeprApr %>% filter(ModelYear=='Dep'),by=c("Schedule"),all.x=T) %>%
-  replace(is.na(.),depBound_upp) %>%
-  mutate(Adj2011Fmv = ifelse(CurrentFmv<fmv_make,pmax(pmin(fmv_make, CurrentFmv * (1 + rate)*.99*(1+x)),CurrentFmv * (1+rate)*(.99)*(1-x)),fmv_make),
-         Adj2011Flv = ifelse(CurrentFlv<flv_make,pmax(pmin(flv_make, CurrentFlv * (1 + rate)*.99*(1+x)),CurrentFlv * (1+rate)*(.99)*(1-x)),flv_make)) %>%
-  select(ClassificationId, Adj2011Fmv,Adj2011Flv) %>%
-  mutate(ModelYear =botyear)
-
-
-AllTmake_new <- merge(AllTmake,RebaseTemp_2make,by=c('ClassificationId','ModelYear'),all.x=T) %>%
-  mutate(Adjfmv = ifelse(ModelYear == botyear,Adj2011Fmv,fmv_make),
-         Adjflv = ifelse(ModelYear == botyear,Adj2011Flv,flv_make)) %>%
-  select(-Adj2011Fmv,-Adj2011Flv)
-
-'              Temporary use for 04/30 effective date - rebasing                    '
-
-
-MoMlimit<-merge(AllTmake_new,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
- # mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
- #        limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(CategoryId ==2616,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
-  mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,ifelse(ModelYear==botyear, MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM))),
-         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(ModelYear==botyear, MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
- # mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,fmv_make),
- #        limit_flv = ifelse(is.na(CurrentFlv),flv_make,flv_make)) %>%
-  #### One time change for market condition in March,2020
-  #mutate(limit_flv = ifelse(CategoryId %in% c(2515, 360, 29, 362, 15, 6, 2509, 2505, 32, 2599, 164),limit_flv * .96, ifelse(CategoryId ==2616, limit_flv * .90,limit_flv * .93)))%>%
+MoMlimit<-merge(CapMakeSchedule,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
+         limit_flv = ifelse(is.na(CurrentFlv),flv_make,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM))) %>%
   arrange(ClassificationId,ModelYear)
-
-
-#MoMlimit <- MoMlimit %>% filter(Schedule != 'Sweeper And Brooms Ride-On USA')
-
-
-'              Temporary use for 04/30 effective date - rebasing                    '
 
 
 ######################################################### Retail vs Auction check ########################################################## 
@@ -294,9 +268,7 @@ MakeIssYear<-fixYear_Make %>% filter(retFlag=='flag' |aucFlag=='flag') %>% selec
 ############################################ Grab corresponding depreciation and appreciation ###############################################
 
 #### Join the subcat level appreciation and depreciation with make map
-
 DeprecMake<-merge(fixYear_Make %>% select(ClassificationId,Schedule) %>% distinct(),combDeprApr,by='Schedule') 
-
 
 MoM_deprapr_Make<-merge(DeprecMake,LM_deprapr,by=c("ClassificationId",'ModelYear'),all.x=T) %>%
   mutate(limit_fmv = ifelse(is.na(LMvalue),rate,
@@ -306,14 +278,9 @@ MoM_deprapr_Make<-merge(DeprecMake,LM_deprapr,by=c("ClassificationId",'ModelYear
   arrange(ClassificationId,ModelYear)
 
 
-
 MakeSchedOutput<-rbind(fixYear_Make %>% select(ClassificationId,ModelYear,limit_fmv,limit_flv),MoM_deprapr_Make %>% select(ClassificationId,ModelYear,limit_fmv,limit_flv)) %>% 
   arrange(ClassificationId,desc(ModelYear))
 
 Final_makeSched = MakeSchedOutput
-
-
-#joinMakeOut<-MakeSchedOutput %>% filter(ClassificationId==101729)
-#write.csv(Final_makeSched,"20190109Final_makeSched.csv")
 
 

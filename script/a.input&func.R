@@ -20,9 +20,9 @@ age_joint = 7
 indexcap = 0.0300
 
 ## set the limit movement from last month
-limUp_MoM = 0.0400
-limDw_MoM = 0.0600
-limDw_MoM_spec = 0.1
+limUp_MoM = 0.02
+limDw_MoM = 0.06
+limDw_MoM_spec = 0.06
 
 ## thresholds of #datapoints - use to move schedules from regression
 #t1<-3 t2<-6 t3<-10 t4<-15 t5<-21 t6<-28
@@ -30,9 +30,11 @@ threshold_adj = 25
 threshold_brw = 30
 threshold_recency = 40
 threshold_rec.calc = 25
+threshold_appr = 30
 
 
 recency_cap = 0.25
+
 ## set the minimum gap between two channels
 if (CountryCode == 'USA'){
   capChannel = 0.10
@@ -60,11 +62,12 @@ LowerB = 0
 slopecap_low = -1.5
 slopecap_up_auc = -.05
 slopecap_up_ret = -.02
+
 ## caps of appreciation and depreciation
 app_yrgap = 3.00
-appBound_upp = 0.15
-appBound_bot = 0.05
-appBound_na = 0.10
+appBound_upp = 0.12
+appBound_bot = 0.03
+appBound_na = 0.08
 
 depBound_upp = 0.06
 depBound_upp_crane = 0.10
@@ -73,6 +76,8 @@ depBound_na = 0.040
 
 DeprMoMLimit = 0.002
 ApprMoMLimit = 0.01
+
+appr_ageuse_fix = 1
 ## set the index of standard deviation side of mean 
 stdInd =2
 
@@ -100,7 +105,7 @@ lastyr_2 = 0.10
 ## use for the second end year - prevend rebasing jump
 x = 0.05
 ## use for the first end year violate second end year
-endYrRate = 0.02
+endYrRate = 0.03
 
 ## Global category list
 GlobalList<-c(313,	6,	2509,	15,	29,	315,	360,	451,	316,	362)
@@ -263,3 +268,53 @@ split.joinlevel<-function(input,dataload,brwtype){
   
   return(rbind(CatData,SubcatData,MakeData))}
 
+Use_Latest_Data<-function(df,sort_var,thresholdNum,use_case,recent_time){
+  
+  if(sort_var == 'SaleDate'){
+     if(use_case == 'shift'){
+      rows_count<-df %>%
+      group_by(Schedule,ModelYear) %>% 
+      arrange(desc((!!as.symbol(sort_var)))) %>%
+      mutate(rowNum=row_number()) 
+      
+      morethan_thres_list<-rows_count %>%
+        filter(as.Date(EffectiveDate) >= recent_time) %>%
+        filter(rowNum == thresholdNum) %>%
+        select(Schedule,ModelYear)
+      
+      recent_output <- rbind(data.frame(merge(rows_count,morethan_thres_list,by=c('Schedule','ModelYear')) %>% filter(as.Date(EffectiveDate) >= recent_time)),
+                             data.frame(anti_join(rows_count,morethan_thres_list,by=c('Schedule','ModelYear')) %>% filter(rowNum<=thresholdNum)))
+    }
+        
+    else if(use_case =='recency'){
+      rows_count<-df %>%
+        group_by(Schedule) %>% 
+        arrange(desc((!!as.symbol(sort_var)))) %>%
+        mutate(rowNum=row_number()) 
+      
+      morethan_thres_list<-rows_count %>%
+        filter(as.Date(EffectiveDate) >= recent_time) %>%
+        filter(rowNum == thresholdNum) %>%
+        select(Schedule)
+      
+      recent_output <- rbind(data.frame(merge(rows_count,morethan_thres_list,by='Schedule') %>% filter(as.Date(EffectiveDate) >= recent_time)),
+                             data.frame(anti_join(rows_count,morethan_thres_list,by='Schedule') %>% filter(rowNum<=thresholdNum)))
+    }
+   
+  }
+  else if(sort_var == 'Age'){
+    rows_count<-df %>%
+      group_by(Schedule) %>% 
+      arrange((!!as.symbol(sort_var))) %>%
+      mutate(rowNum=row_number())    
+    
+    morethan_thres_list<-rows_count %>%
+      filter(Age <= recent_time)%>%
+      filter(rowNum == thresholdNum) %>%
+      select(Schedule)
+    
+    recent_output <- rbind(data.frame(merge(rows_count,morethan_thres_list,by='Schedule') %>% filter(Age <= recent_time)),
+                           data.frame(anti_join(rows_count,morethan_thres_list,by='Schedule') %>% filter(rowNum<=thresholdNum)))
+  }
+  return(recent_output)
+}

@@ -17,7 +17,7 @@ listingCrane <- merge(uploadListing,CatlevelListing, by=c("CategoryId","Country"
 Datainput_pre<-rbind(retailCrane,listingCrane) %>%
   filter(as.Date(EffectiveDate)<=publishDate & Flag =='inUse')
 
-ListingSched<-Datainput_pre %>% filter(SaleType=='Listing') %>% distinct(Schedule) 
+ListingSched<-rbind(In %>% select(Schedule),InR %>% select(Schedule)) %>% filter(str_detect(Schedule,'Crane')) %>% distinct(Schedule)
 Nlisting<-dim(ListingSched)[1]
 
 
@@ -69,8 +69,6 @@ for (i in 1:Nlisting) {
 
 list_reductfact<-data.frame(ListingSched,coef3) %>%
   mutate(reduction = pmax(pmin(coef3+1,1.2),1)) 
-
-write.csv(list_reductfact,paste(publishDate,"ListingReduction.csv"),row.names = F)
 
 revised_listing<-merge(merge(uploadListing,CatlevelListing, by=c("CategoryId","Country")),list_reductfact,by='Schedule',all.x=T) %>%
   mutate(SalePrice = ListPrice/reduction,
