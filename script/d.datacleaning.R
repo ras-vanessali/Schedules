@@ -66,7 +66,9 @@ make_output<-merge(joinmap_make,Out_make,by=c('CategoryId','SubcategoryId')) %>%
 
 ### Combine C, CS and CSM levels of data into one & exclude bad data
 Datainput<-split.joinlevel(In,uploadData,'') %>%
-  filter(as.Date(EffectiveDate)<=publishDate & Flag =='inUse') %>%
+  filter(as.Date(EffectiveDate)<=publishDate & Flag =='inUse')%>%
+  #filter((SaleType != 'Auction' & difftime(SaleDate, AcquisitionDate,units = "weeks")>78)
+  #          | SaleType == 'Auction') %>%
   mutate(CompId = factor(CompId)) %>%
   group_by(Schedule,SaleType) %>%
   #summarise(mean = mean(SPvalue),st=sd(SPvalue))
@@ -104,6 +106,7 @@ Datainput_Ret<-aucBorrow_all %>% filter(SaleType=='Retail')
 
 ###################################################################################################################
 ############################################## Part 3: Retail Borrow  #############################################
+###################################################################################################################
 
 ###### create a table auction data that not using for informing regression, this table only used for plot
 retBorrow_all<-split.joinlevel(InA,uploadData,'brw') %>%

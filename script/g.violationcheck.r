@@ -396,7 +396,7 @@ fixyrSched<-JoinChannel %>% filter(ModelYear == topyear-fixyr_gap(Schedule)) %>%
 BorrowBoundsin<-merge(Sched,SchedR %>% rename(Schedule = BorrowSchedule, ABSched=Schedule),by='Schedule') %>%
   mutate(RetailNewYrMin = ifelse(is.na(RetailNewYrMin.y),RetailNewYrMin.x, RetailNewYrMin.y),
          RetailNewYrMax = ifelse(is.na(RetailNewYrMax.y),RetailNewYrMax.x, RetailNewYrMax.y),
-         AuctionNewYrMin = ifelse(is.na(AuctionNewYrMin.y),AuctionNewYrMin.x, AuctionNewYrMin.y),
+         AuctionNewYrMin = ifelse(is.na(AuctionNewYrMin.y),AuctionNewYrMin.x,AuctionNewYrMin.y),
          AuctionNewYrMax = ifelse(is.na(AuctionNewYrMax.y),AuctionNewYrMax.x, AuctionNewYrMax.y)) %>%
   select(ABSched,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax)
 

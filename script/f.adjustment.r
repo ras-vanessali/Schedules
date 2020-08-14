@@ -48,7 +48,7 @@ SaleDtRet_adjUse<-data.frame(subset(Data_clean,Data_clean$SaleType!="Auction" & 
 shiftRet.count<-merge(SaleDtRet_adjUse,OutRegression_Ret,by=c("Schedule","ModelYear")) %>%
   mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
          fmv.1 = fmv/(0.99^power)) 
- 
+
 shiftRet.calc<-Use_Latest_Data(shiftRet.count,'SaleDate',threshold_adj,'shift',publishDate)%>%
   mutate(fmvalue=CurrentABCost*as.numeric(fmv.1)
          ,SpFmv=SalePrice/fmvalue) %>%
@@ -76,27 +76,27 @@ shiftRet.apply<-merge(OutRegression_Ret,Ret.capshift,by=c('Schedule','ModelYear'
 ########################### Calculate the recency scale factors #################
 #### recency calculation: if N(recent 1 month) > m, use 1 month; else use most recent n til 3 months
 ## join the raw data to regression output
-join.rec.ret<-merge(data.frame(Data_clean) %>% filter(SaleType !='Auction'), OutRegression_Ret,by=c('Schedule','ModelYear'))%>% 
+join.rec.ret<-merge(data.frame(Data_clean) %>% filter(SaleType !='Auction'), shiftRet.apply,by=c('Schedule','ModelYear'))%>% 
   filter(as.Date(EffectiveDate)>=thirdLastM & ModelYear>=botyear & ModelYear<=topyear & Age>1) %>%
   mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
-         fmv_shiftLim = fmv/(0.99^power))
+         fmv.adjust = fmv_shiftLim/(0.99^power))
 
 
 ## combine to get the dataset to calculate recency factor, then partial move, apply cap
 RPSF_ret.cal <-  Use_Latest_Data(join.rec.ret,'SaleDate',threshold_recency,'recency',publishDate) %>%
   group_by(Schedule) %>% 
-  summarise(RPSF = mean(SalePrice/(CurrentABCost*as.numeric(fmv_shiftLim))),n=n()) %>%                                                               
+  summarise(RPSF = mean(SalePrice/(CurrentABCost*as.numeric(fmv.adjust))),n=n()) %>%                                                               
   mutate(RPSF_Cap = ifelse(n>threshold_recency,1*RPSF,((threshold_recency-n)+n*RPSF)/threshold_recency)) %>%
   mutate(f.recency.ret = pmin(1+recency_cap,pmax(RPSF_Cap,1-recency_cap))) %>%
   select(Schedule,f.recency.ret)
 
 ## join to get the full list (no recency data get factor = 1), partial move factor by schedule, modelyear
 RPSF_ret.full<-merge(merge(SchedFullList %>% filter(!is.na(RetailNewYrMax)) %>% select(Schedule),RPSF_ret.cal,by='Schedule',all.x=TRUE) %>%
-  mutate(f.recency.ret = ifelse(is.na(f.recency.ret),1,f.recency.ret)),model_year)
+                       mutate(f.recency.ret = ifelse(is.na(f.recency.ret),1,f.recency.ret)),model_year)
 
 
 recFact_ret<- merge(join.rec.ret %>% group_by(Schedule,ModelYear) %>% summarise(n=n())
-                 
+                    
                     ,RPSF_ret.full,by=c('Schedule','ModelYear'),all.y=TRUE) %>%
   complete(Schedule,ModelYear,
            fill = list(n = 0)) %>%
@@ -149,10 +149,10 @@ shiftAuc.apply<-merge(OutRegression_Auc,Auc.capshift,by=c('Schedule','ModelYear'
 ########################### Calculate the recency scale factors #################
 #### recency calculation: if N(recent 1 month) > m, use 1 month; else use most recent n til 3 months
 ## join the raw data to regression output
-join.rec.auc<-merge(data.frame(Data_clean) %>% filter(SaleType !='Retail'), OutRegression_Auc,by=c('Schedule','ModelYear'))%>% 
+join.rec.auc<-merge(data.frame(Data_clean) %>% filter(SaleType !='Retail'), shiftAuc.apply,by=c('Schedule','ModelYear'))%>% 
   filter(as.Date(EffectiveDate)>=thirdLastM & ModelYear>=botyear & ModelYear<=topyear & Age>1) %>%
   mutate(power = abs(elapsed_months(EffectiveDate, publishDate)),
-         flv_shiftLim = flv/(0.99^power))
+         flv.adjust = flv_shiftLim/(0.99^power))
 
 
 
@@ -160,7 +160,7 @@ join.rec.auc<-merge(data.frame(Data_clean) %>% filter(SaleType !='Retail'), OutR
 ## combine to get the dataset to calculate recency factor, then partial move, apply cap
 RPSF_auc.calc<-Use_Latest_Data(join.rec.auc,'SaleDate',threshold_rec.calc,'recency',publishDate) %>%
   group_by(Schedule) %>% 
-  summarise(RPSF = mean(SalePrice/(CurrentABCost*as.numeric(flv_shiftLim))),n=n()) %>%
+  summarise(RPSF = mean(SalePrice/(CurrentABCost*as.numeric(flv.adjust))),n=n()) %>%
   mutate(RPSF_Cap = ifelse(n>threshold_recency,1*RPSF,((threshold_recency-n)+n*RPSF)/threshold_recency)) %>%
   mutate(f.recency.auc = pmin(1+recency_cap,pmax(RPSF_Cap,1-recency_cap))) %>%
   select(Schedule,f.recency.auc)
@@ -169,7 +169,7 @@ RPSF_auc.calc<-Use_Latest_Data(join.rec.auc,'SaleDate',threshold_rec.calc,'recen
 
 ## join to get the full list (no recency data get factor = 1), partial move factor by schedule, modelyear
 RPSF_auc.full<-merge(merge(SchedFullList %>% filter(!is.na(AuctionNewYrMax)) %>% select(Schedule),RPSF_auc.calc,by='Schedule',all.x=TRUE) %>%
-  mutate(f.recency.auc = ifelse(is.na(f.recency.auc),1,f.recency.auc)),model_year)
+                       mutate(f.recency.auc = ifelse(is.na(f.recency.auc),1,f.recency.auc)),model_year)
 
 recFact_auc<- merge(join.rec.auc %>% group_by(Schedule,ModelYear) %>% summarise(n=n())
                     ,RPSF_auc.full,by=c('Schedule','ModelYear'),all.y=TRUE) %>%

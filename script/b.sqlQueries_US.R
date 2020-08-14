@@ -41,6 +41,8 @@ US_dataload<-"SET NOCOUNT ON
                     ,[ModelName]
                     ,[ModelYear]
                     ,SaleDate
+                    ,CASE WHEN AcquisitionDate IS NULL THEN datefromparts(ModelYear, 7, 1)
+					ELSE AcquisitionDate END AS AcquisitionDate
                     ,EOMONTH(SaleDate) as EffectiveDate
                     ,[SalePriceSF] as [SalePrice]
                     ,SaleType
@@ -74,15 +76,21 @@ US_dataload<-"SET NOCOUNT ON
                     WHERE 
                     ( ([source]='internet' 
                        AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
-										   AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24) 
-										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
-                       or (SaleType='retail' AND IsUsedForComparablesUSNA='Y')))     
+					             AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24) 
+					             AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%'))
+
+					          OR ([source]='internet' AND (AuctioneerClassification IS NULL OR [Description] IS  NULL) 
+					          AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24) )
+					   
+                        OR (SaleType='retail' AND IsUsedForComparablesUSNA='Y' 
+                        --AND [MilesHours]>=100
+                        ))
                     AND CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                     AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
 					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')  
 					          AND NOT (modelid = 40413)
                     AND SaleDate >@dateStart AND saledate<=@dateEnd 
-                    --and categoryid in (2606,2612,30,2515,2616)
+                    --and categoryid in (453)
                     --AND SaleDate >='2018-09-01' AND saledate<='2019-08-31'
                     AND ModelYear <= @compingyr 
                     and ModelYear>= CASE WHEN categoryid in (2605,2603,2608,2604,2606)  THEN @year_20 ELSE @dep_endyr END
@@ -143,8 +151,6 @@ Declare @year_20 INT = @topyear-20
 
 
   FROM [Listings].[BI].[ListingsUnique] LU
- -- inner join [ras_sas].[BI].[AppraisalBookEquipmentTypesMKT] ET
- -- on LU.SubcategoryId=ET.SubcategoryId and LU.ModelId = ET.ModelId and ET.AppraisalBookPublishDate = EOMONTH([DateChangedMostRecent])
   left join [ras_sas].[BI].[AppraisalBookEquipmentTypeValuesUSNA] ETV
   on LU.SubcategoryId=ETV.SubcategoryId and LU.ModelId = ETV.ModelId and LU.[Year] = ETV.ModelYear
      AND ETV.[AppraisalBookPublishDate]=@EOpriorM

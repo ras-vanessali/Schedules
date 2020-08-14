@@ -19,8 +19,8 @@ library(xlsx)
 library(stringr)
 
 # country
-#CountryCode = 'GBR'
-CountryCode = 'USA'
+CountryCode = 'GBR'
+#CountryCode = 'USA'
 # db enviroment & connect
 DBserver = 'production' 
 #DBserver = 'rasquery'
@@ -30,7 +30,7 @@ DBserver = 'production'
 ## read input excel file and create a plot for storing the plots
 file_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules/doc"
 setwd(file_path)  
-excelfile = '20200506 SchedulesManagement.xlsx'
+excelfile = '20200710 SchedulesManagement.xlsx'
 plotFolder = paste("Plots",Sys.Date())
 dir.create(plotFolder)
 
@@ -115,11 +115,14 @@ if (CountryCode == 'USA'){
   print('Make Adjusters is done')
   setwd(file_path)  
   eval(runj)
+  print('Plots generation is done')
   setwd(file_path)  
   write.xlsx2(as.data.frame(joinMakeOut),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjusters',row.names = F)
   write.xlsx2(as.data.frame(MakeSFcalc_Sched),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjCalc',append=T,row.names = F)
   write.xlsx2(as.data.frame(list_reductfact),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'ListingReduction',append=T,row.names = F)
   write.xlsx(regressionCoef,file = paste(publishDate, 'Coefficients.xlsx'), sheetName='Sheet1',row.names=F)
+  write.xlsx2(as.data.frame(EDAview.N.trans),file = paste(publishDate,CountryCode," EDA.xlsx"),sheetName = 'NumUnits',row.names =F)
+  write.xlsx2(as.data.frame(EDAview.mean.trans),file = paste(publishDate,CountryCode," EDA.xlsx"),sheetName = 'SPValMean',row.names =F,append=T)
 } else{
   
   eval(rund)
@@ -143,3 +146,4 @@ if (CountryCode == 'USA'){
 
 end_time_r <- Sys.time()
 end_time_r - start_time_r
+

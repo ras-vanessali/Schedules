@@ -221,7 +221,7 @@ lastM_schedule<-LastMonth_Sched %>%
 ### join to last month value and limit the movement
 MoMSchedules <- merge(CapSchedule,lastM_schedule,by=c("ClassificationId","ModelYear"),all.x=T) %>%
   mutate(limit_fmv = ifelse(is.na(CurrentFmv),Adjfmv,MoMlimitFunc(CurrentFmv,Adjfmv,limUp_MoM,limDw_MoM)),
-         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM))) %>%
+         limit_flv = ifelse(is.na(CurrentFlv),Adjflv,ifelse(CategoryId==2750,MoMlimitFunc(CurrentFlv,Adjflv,limDw_MoM_spec,limDw_MoM_spec),MoMlimitFunc(CurrentFlv,Adjflv,limUp_MoM,limDw_MoM)))) %>%
   arrange(ClassificationId,desc(ModelYear))
 
 ## limit by last month for global
@@ -289,6 +289,6 @@ FinalCheck %>%
   filter(Schedule == ManualChangeYr[2,])
 
 FinalCheck %>% 
-  filter(Schedule == ManualChangeYr[3,])
+  filter(Schedule == ManualChangeYr[4,])
 
 

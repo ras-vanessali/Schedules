@@ -210,7 +210,7 @@ for (j in 1:N_plot){
                           })
   draw_lastM_Auc<-xyplot(CurrentFlv ~ Age, PrevMonth_Sched,ylim=yaxis,xlim=xaxis,type=c('p','l'),lty=3,col='dodgerblue3',ylab = yaxis_name,lwd=3,pch=4,cex=1.5)
 
-  draw_regLine_Auc<-xyplot(flv ~ Age, AucRegression,ylim=yaxis,xlim=xaxis,scales = list(y=list(tick.number=10),x=list(tick.number=1116))
+  draw_regLine_Auc<-xyplot(flv ~ Age, AucRegression,ylim=yaxis,xlim=xaxis,scales = list(y=list(tick.number=10),x=list(tick.number=16))
                            ,type=c("l","g"),col='dodgerblue3',lwd=1.5,lty=1,cex=1,
                            ylab = yaxis_name,main=list(label=paste(SchedFullList_plot[j,1],' - ',publishDate),font=2,cex=2))
   

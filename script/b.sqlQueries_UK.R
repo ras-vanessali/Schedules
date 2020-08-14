@@ -1,8 +1,7 @@
 
 ################################## 1.A UK data load #####################################
 UK_dataload<-"
-                               
-             SET NOCOUNT ON                    
+               SET NOCOUNT ON                    
 
 			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-2,GETDATE()))-2, -1) as date)
 			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
@@ -35,6 +34,7 @@ UK_dataload<-"
                     ,BIC.[ModelName]
                     ,BIC.[ModelYear]
                     ,BIC.SaleDate
+                    ,BIC.AcquisitionDate
                     ,EOMONTH(BIC.SaleDate) as EffectiveDate
 					,BIC.OptionValue03 as SalePrice
 					,'Retail' as SaleType
@@ -93,6 +93,7 @@ UK_dataload<-"
                     ,AucS.[ModelName]
                     ,AucS.[ModelYear]
                     ,AucS.SaleDate
+                    ,datefromparts(ModelYear, 7, 1) as AcquisitionDate
                     ,EOMONTH(AucS.SaleDate) as EffectiveDate
 					,AucS.SalePrice as SalePrice
 					,'Auction' as SaleType
@@ -138,13 +139,11 @@ MakeAdj_CatL <- Mlist %>% distinct(CategoryId)
 CategoryId <- cbind(MakeAdj_CatL, MakeAdj_CatL,MakeAdj_CatL)
 
 MakeAdjust_dataloadUK<-
-"                    
+  "                    
              SET NOCOUNT ON                    
-
 			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-3,GETDATE()))-2, -1) as date)
 			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
 				  Declare @month6 Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-8, -1) AS date) 
-
             Declare @topyear INT = 2020
             Declare @compingyr INT = @topyear+1
 					  Declare @botyear INT =  @compingyr-10
@@ -156,14 +155,11 @@ MakeAdjust_dataloadUK<-
             Declare @index_AucL decimal(10,1) = 0.3  
 			      Declare @index_RetH decimal(10,1) = 1.5    
             Declare @index_AucH decimal(10,1) = 1.2
-
 			Declare @badData_low decimal(10,1) = .4
 Declare @badData_hi decimal(10,1) = 1.6
-
 Declare @recentThreshold Int = 50
 Declare @Age_0 INT = 2
 Declare @Age_f INT = 12
-
             Drop Table if exists #Retail
                  SELECT 
                     
@@ -195,13 +191,11 @@ Declare @Age_f INT = 12
                     WHEN BIC.OptionValue03/ET.[CurrentABCost] < @index_RetL - (@index_RetL*(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00))/4.0
 					  OR BIC.OptionValue03/ET.[CurrentABCost] > @index_RetH - (@index_RetH*(YEAR(BIC.SaleDate)-BIC.ModelYear + (MONTH(BIC.SaleDate)-6)/12.00))/25.0 THEN 'EcxRegr'
                     ELSE 'inUse' END AS 'Flag'
-
                     ,CASE WHEN BIC.Modelyear < @botyear or BIC.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
                 
 				INTO #Retail      
                 FROM [ras_sas].[BI].[Comparables] BIC
 				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
-
 				On BIC.[EquipmentTypeId] = ET.[EquipmentTypeId] 
                     
                 WHERE 
@@ -209,7 +203,6 @@ Declare @Age_f INT = 12
                  (BIC.SaleType='retail' AND BIC.CustomerId in (SELECT [CustomerID]
 														FROM [ras_sas].[BI].[Customers]
 														where [IsUsedForABCostGBUK]='Y'))
-
                 AND BIC.CategoryId =?
                 AND BIC.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
 					        AND NOT (BIC.[SubcategoryId] in (2806,2808,2001,2636) and BIC.makeid=31 and BIC.ModelName not like 'XQ%')  
@@ -221,8 +214,6 @@ Declare @Age_f INT = 12
                 AND ET.[CurrentABCost] is not NULL
                 AND BIC.M1PrecedingFmv  is not NULL
                 AND BIC.Option15 is NULL 
-
-
 				Drop Table if exists #Auction
 				 SELECT                    
 				  AucS.InternetComparableId as CompId
@@ -252,14 +243,12 @@ Declare @Age_f INT = 12
                     ,CASE                    
                     WHEN AucS.SalePrice/ET.[CurrentABCost] < @index_AucL - (@index_AucL*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/4.0
 					  OR AucS.SalePrice/ET.[CurrentABCost] > @index_AucH - (@index_AucH*(YEAR(SaleDate)-ModelYear + (MONTH(SaleDate)-6)/12.00))/25.0 THEN 'EcxRegr'
-
                     ELSE 'inUse' END AS 'Flag'
                     
 				   ,CASE WHEN AucS.Modelyear < @botyear or AucS.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
                 INTO #Auction    
                 FROM [ras_sas].[BI].[AuctionSales] AucS
 				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
-
 				On AucS.[EquipmentTypeId] = ET.[EquipmentTypeId] 
                     
                 WHERE  ET.[MarketCode]='GBUK' and AucS.CountryCode ='GBR' AND AucS.CurrencyCode='GBP' 
@@ -272,8 +261,6 @@ Declare @Age_f INT = 12
                 AND AucS.SalePrice>100
                 AND ET.[CurrentABCost] is not NULL
                 AND AucS.M1PrecedingFlv is not NULL
-
-
 							 
 Drop Table If exists #M1Value 
 	  SELECT  [ClassificationId]
@@ -293,9 +280,6 @@ Drop Table If exists #M1Value
 	          AND MakeId is null                                                       
             AND AppraisalBookPublishDate>=@dateStart AND AppraisalBookPublishDate<@dateEnd
             AND ModelYear <= @topyear and ModelYear>=@ext_botYr
-
-
-
 /*************************************** Join & filter ***************************************/     
 select * 
 FROM(
@@ -304,7 +288,6 @@ from(
 	SELECT tbData.CategoryId,tbData.CategoryName, tbData.SubcategoryId,tbData.SubcategoryName, tbData.MakeId, tbData.MakeName,tbData.SaleType,SaleDate	
 	,CASE WHEN SaleType='Auction' THEN SalePrice/(FlvSchedulePercentage*tbData.CurrentABCost/100)
 	ELSE SalePrice/(FmvSchedulePercentage*tbData.CurrentABCost/100) END AS spValue
-
 	FROM 
 	( SELECT * FROM #Retail 
 		Union ALL
@@ -316,6 +299,7 @@ from(
 WHERE spValue < @badData_hi AND spValue > @badData_low) as rowN
 where not(SaleDate<=@month6 and rowNum >@recentThreshold)
 "
+
 
 
 ################################## 1.C Input last month category and subcat level schedule #####################################

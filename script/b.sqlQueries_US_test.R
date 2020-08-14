@@ -72,7 +72,7 @@ US_dataload<-"SET NOCOUNT ON
                     FROM [ras_sas].[BI].[Comparables]
                     
                     WHERE 
-                    ( ([source]='internet' 
+                    ( ([source]='internet' and not ([AuctioneerId] in (93,52))
                        AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
 										   AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24) 
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
@@ -231,7 +231,8 @@ Drop Table If exists #Data
                     FROM [ras_sas].[BI].[Comparables]
                     
                     WHERE 
-                   ( ([source]='internet' AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
+                   ( ([source]='internet' and not ([AuctioneerId] in (93,52))
+                   AND NOT ((AuctioneerClassification LIKE '%unused%' OR [Description] LIKE '%unused%') AND (SaleYear - ModelYear > 1))
 										   AND NOT (auctioneer = 'Alex Lyon & Son' and age between 0 and 24)
 										   AND NOT ([Description] like '%reman%' or [Description] like '%refurb%' or [Description] like '%recon%')
                     or (SaleType='retail' AND IsUsedForComparables='Y')))     

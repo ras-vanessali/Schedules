@@ -20,9 +20,9 @@ age_joint = 7
 indexcap = 0.0300
 
 ## set the limit movement from last month
-limUp_MoM = 0.02
+limUp_MoM = 0.04
 limDw_MoM = 0.06
-limDw_MoM_spec = 0.06
+limDw_MoM_spec = 0.20
 
 ## thresholds of #datapoints - use to move schedules from regression
 #t1<-3 t2<-6 t3<-10 t4<-15 t5<-21 t6<-28
@@ -118,7 +118,7 @@ GlobalClassId=1
 setwd(file_path)  
 ################################################# Read tabs in file ##########################################################
 ### load the inputfeed file
-In<-data.frame(read.xlsx(excelfile,sheetName='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule)
+In<-data.frame(read.xlsx(excelfile,sheetName='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CanadaPlots)
 InR<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='RetailBorrowAuction')
 InA<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
@@ -231,8 +231,9 @@ elapsed_months <- function(end_date, start_date) {
 ###split join level
 split.joinlevel<-function(input,dataload,brwtype){
   select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
-                'ModelYear',	'SaleDate',	'EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
+                'ModelYear',	'SaleDate','AcquisitionDate','EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
                 'SPvalue',	'CurrentABCost',	'Age',	'Flag',	'YearFlag',	'Schedule') 
+  
   select.var.brw<-c('BorrowSchedule',	'BorrowType')
   
   Catlevel<-input %>% filter(Level2 =='Category') %>% select(-SubcategoryId,-MakeId)

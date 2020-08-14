@@ -263,7 +263,7 @@ for (i in 1:nrow(fixYear_Make)){
 ### issued classifications on year
 fixYear_Make %>% filter(retFlag=='flag' |aucFlag=='flag') 
 MakeIssYear<-fixYear_Make %>% filter(retFlag=='flag' |aucFlag=='flag') %>% select(ClassificationId)  
-
+MakeIssYear
 
 ############################################ Grab corresponding depreciation and appreciation ###############################################
 
