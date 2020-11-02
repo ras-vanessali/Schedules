@@ -108,7 +108,7 @@ rund<-parse('d.datacleaning.r')
 rune<-parse('e.buildmodel.r')
 runf<-parse('f.adjustment.r')
 rung<-parse('g.violationcheck.r')
-runh<-parse('h. depreciation&monthlimit.r')
+runh<-parse('h.depreciation&monthlimit.r')
 runi<-parse('i.makeschedules.r')
 runj<-parse('j.upload&plots.r')
 
