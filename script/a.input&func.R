@@ -20,9 +20,9 @@ age_joint = 7
 indexcap = 0.0300
 
 ## set the limit movement from last month
-limUp_MoM = 0.04
-limDw_MoM = 0.06
-limDw_MoM_spec = 0.20
+limUp_MoM = .04
+limDw_MoM = .06
+limDw_MoM_spec = 3
 
 ## thresholds of #datapoints - use to move schedules from regression
 #t1<-3 t2<-6 t3<-10 t4<-15 t5<-21 t6<-28
@@ -31,6 +31,7 @@ threshold_brw = 30
 threshold_recency = 40
 threshold_rec.calc = 25
 threshold_appr = 30
+threshold_newsales = 30
 
 
 recency_cap = 0.25
@@ -50,6 +51,9 @@ retBelieve = 5
 ### borrow schedule first year move
 brwsched_move = .1
 
+### new sale discount applied on each new units sale
+new_discount = .040
+
 ## newest year in auction have to be in the range
 capMonthpct = 0.01
 
@@ -57,7 +61,8 @@ capMonthpct = 0.01
 UpperB = 3
 LowerB = 0
 
-
+## depreciation age 
+deprAge<-seq(0,7,1)
 ## logistic growth regression slope cap
 slopecap_low = -1.5
 slopecap_up_auc = -.05
@@ -114,8 +119,12 @@ ListingIds<-c(2605,2603,2608,2604,2606,2577,19,2607)
 #'Carry-Deck Cranes','Rough-Terrain Cranes','All-Terrain Cranes','Truck-Mounted Cranes','Crawler Cranes'
 GlobalClassId=1
 
+## exclude comps which sold in new
+time_min = 18
+meter_min = 100
 
-setwd(file_path)  
+
+setwd(input_path)  
 ################################################# Read tabs in file ##########################################################
 ### load the inputfeed file
 In<-data.frame(read.xlsx(excelfile,sheetName='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CanadaPlots)
@@ -228,11 +237,49 @@ elapsed_months <- function(end_date, start_date) {
   12 * (ed$year - sd$year) + (ed$mon - sd$mon)
 }
 
+### build function to exclude "sold in new" comps
+exc_new <- function(df,mintime,minmeter){
+  
+  df_mod<-df %>%
+    mutate(my_update = paste(ModelYear,'-07-01',sep='')) %>%
+    ## if purchased usaed, the machine is used
+    mutate(IsPurchasedUsed = ifelse(is.na(AcquisitionDate),'Unknown',
+                                    ifelse(between(interval(AcquisitionDate,as.Date(my_update)) %/% months(1),-10,10),'New','Used'))) %>%
+    mutate(MeterAdj = ifelse(is.na(MeterCode) | MeterCode == 'M',"N","Y"))
+  
+  df_retail <- df_mod %>% filter(SaleType == 'Retail')
+  df_nonretail <- df_mod %>% filter(SaleType != 'Retail')
+  
+  ## if saledate - acquisitiondate > mintime or meter > minmeter, then used (keep)
+  df_New <- df_retail %>% 
+    filter(interval(ModAcqDate,SaleDate) %/% months(1) <=mintime) %>%
+    filter(IsPurchasedUsed=='New') %>%
+    filter((MeterAdj =='Y' & MilesHours<minmeter) | (MeterAdj =='N' & MilesHours<minmeter & MilesHours>1))
+
+  ## meter not adjusted or adjsuted by M categories in 0 and 1 meter
+  df_Unknown <- df_retail %>% 
+    filter(interval(ModAcqDate,SaleDate) %/% months(1) <=mintime) %>%
+    filter(IsPurchasedUsed=='Unknown') %>%
+    filter((MeterAdj =='Y' & MilesHours<minmeter) | (MeterAdj =='N' & MilesHours<minmeter & MilesHours>1))
+  
+  
+  df_keep <-anti_join(anti_join(df_retail,df_New,by=c("Schedule","CompId")),df_Unknown,by=c("Schedule","CompId")) 
+  used_comps <- rbind(rbind(df_nonretail,df_keep) %>% mutate(isNew ='N'),
+                      rbind(df_New,df_Unknown) %>% mutate(isNew = 'Y'))%>% 
+                select(-my_update,IsPurchasedUsed,MeterAdj)
+  return(used_comps)
+    
+}
+  
+
+
+
+
 ###split join level
+select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
+              'ModelYear',	'SaleDate','AcquisitionDate','ModAcqDate','EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
+              'SPvalue',	'CurrentABCost',	'Age',	'Flag',	'YearFlag',	'Schedule','MilesHours','MilesHoursCode') 
 split.joinlevel<-function(input,dataload,brwtype){
-  select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
-                'ModelYear',	'SaleDate','AcquisitionDate','EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
-                'SPvalue',	'CurrentABCost',	'Age',	'Flag',	'YearFlag',	'Schedule') 
   
   select.var.brw<-c('BorrowSchedule',	'BorrowType')
   
@@ -243,12 +290,10 @@ split.joinlevel<-function(input,dataload,brwtype){
   if(brwtype=='brw'){
     CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
       mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
       select(c(select.var,select.var.brw)) 
     
     SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
       mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
       select(c(select.var,select.var.brw)) 
     
     MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(c(select.var,select.var.brw)) 
@@ -256,12 +301,10 @@ split.joinlevel<-function(input,dataload,brwtype){
   else{
     CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
       mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
       select(all_of(select.var)) 
     
     SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
       mutate(str = str_sub(CompId,-1)) %>%
-      filter(MakeId !=31 | (MakeId ==31 & str<=indexUse)) %>% 
       select(all_of(select.var)) 
     
     MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(all_of(select.var)) 
@@ -287,7 +330,7 @@ Use_Latest_Data<-function(df,sort_var,thresholdNum,use_case,recent_time){
                              data.frame(anti_join(rows_count,morethan_thres_list,by=c('Schedule','ModelYear')) %>% filter(rowNum<=thresholdNum)))
     }
         
-    else if(use_case =='recency'){
+    else if(use_case == 'recency'){
       rows_count<-df %>%
         group_by(Schedule) %>% 
         arrange(desc((!!as.symbol(sort_var)))) %>%
@@ -300,6 +343,23 @@ Use_Latest_Data<-function(df,sort_var,thresholdNum,use_case,recent_time){
       
       recent_output <- rbind(data.frame(merge(rows_count,morethan_thres_list,by='Schedule') %>% filter(as.Date(EffectiveDate) >= recent_time)),
                              data.frame(anti_join(rows_count,morethan_thres_list,by='Schedule') %>% filter(rowNum<=thresholdNum)))
+    }
+    
+    else if(use_case == 'newsales'){
+      rows_count<-df %>%
+        filter(ModelYear>=topyear-1) %>%
+        group_by(Schedule) %>% 
+        arrange(isNew,desc((!!as.symbol(sort_var)))) %>%
+        mutate(rowNum=row_number()) 
+      
+      morethan_thres_list<-rows_count %>%
+        filter(isNew == 'N') %>%
+        filter(rowNum == thresholdNum) %>%
+        select(Schedule)
+      
+      recent_output <- rbind(data.frame(merge(rows_count,morethan_thres_list,by='Schedule') %>% filter(isNew == 'N')) %>% select(-rowNum),
+                             data.frame(anti_join(rows_count,morethan_thres_list,by='Schedule') %>% filter(rowNum<=thresholdNum)) %>% select(-rowNum),
+                             data.frame(df %>% filter(ModelYear<topyear-1)))
     }
    
   }

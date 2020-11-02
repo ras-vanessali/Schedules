@@ -193,7 +193,7 @@ for (j in 1:N_plot){
   
   
   ###### Lines - depreciation
-  DrawDepreciation<- Deprline %>% filter(Schedule==factor(SchedFullList_plot[j,1],levels=levels(Deprline$Schedule)))
+  DrawDepreciation<- Deprline %>% filter(Schedule==SchedFullList_plot[j,1])
   
   xaxis = c(-.5,15)
   yaxis = c(0,2)

@@ -41,8 +41,11 @@ US_dataload<-"SET NOCOUNT ON
                     ,[ModelName]
                     ,[ModelYear]
                     ,SaleDate
-                    ,CASE WHEN AcquisitionDate IS NULL THEN datefromparts(ModelYear, 7, 1)
-					ELSE AcquisitionDate END AS AcquisitionDate
+                    ,CustomerId
+                    ,Equipno
+                   ,CASE WHEN AcquisitionDate IS NULL THEN datefromparts(ModelYear, 7, 1)
+					ELSE AcquisitionDate END AS ModAcqDate
+					,AcquisitionDate
                     ,EOMONTH(SaleDate) as EffectiveDate
                     ,[SalePriceSF] as [SalePrice]
                     ,SaleType
@@ -69,8 +72,7 @@ US_dataload<-"SET NOCOUNT ON
                     ELSE 'inUse' END AS 'Flag'
 				
                     ,CASE WHEN Modelyear < @botyear or Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
-                    
-				
+                 
                     FROM [ras_sas].[BI].[Comparables]
                     
                     WHERE 
@@ -87,8 +89,8 @@ US_dataload<-"SET NOCOUNT ON
                         ))
                     AND CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                     AND MakeId NOT in (58137,78) --Miscellaneous,Not Attributed
-					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')  
-					          AND NOT (modelid = 40413)
+					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')  --generators
+					         
                     AND SaleDate >@dateStart AND saledate<=@dateEnd 
                     --and categoryid in (453)
                     --AND SaleDate >='2018-09-01' AND saledate<='2019-08-31'
@@ -131,11 +133,14 @@ Declare @year_20 INT = @topyear-20
 	    ,LU.ModelId
       ,LU.[ModelName]
       ,EOMONTH([DateScrapedMostRecent]) as EffectiveDate
+      ,datefromparts(ModelYear, 7, 1) as AcquisitionDate
+      ,datefromparts(ModelYear, 7, 1) as ModAcqDate
       ,[DateScrapedMostRecent]
 	  ,[DateChangedMostRecent]
       ,Price ListPrice
       ,[Year] ModelYear
-      ,MeterHours
+       ,iif(MeterMiles is null, MeterHours,MeterMiles) as MilesHours
+      ,iif(MeterMiles is null and MeterHours is NULL , Null ,iif(MeterMiles is Null, 'H','M')) as MilesHoursCode
       ,ETV.ABCostUSNA CurrentABCost
 	  ,ETV.[FmvSchedulePercentage]
 	  ,ETV.ABCostUSNA*ETV.[FmvSchedulePercentage]/100 as M1Value
@@ -243,7 +248,7 @@ Drop Table If exists #Data
                     or (SaleType='retail' AND IsUsedForComparablesUSNA='Y')))     
                     AND CategoryId =?
 					          AND NOT ([SubcategoryId] in (2806,2808,2001,2636) and makeid=31 and ModelName not like 'XQ%')         
-					           AND NOT (modelid = 40413)
+					         
                     AND EOMONTH(SaleDate)>=@dateStart AND EOMONTH(SaleDate)<@dateEnd
                     AND ModelYear <= @topyear and ModelYear>=@ext_botYr
                     AND [SalePriceSF]>100
@@ -333,7 +338,7 @@ SELECT [ClassificationId]
 
 ################################ Classification - csm #########################################
 
-AllClass<-"
+AllClass_query<-"
 SELECT [ClassificationId]
       ,[CategoryId]
       ,[CategoryName]
@@ -352,7 +357,7 @@ SELECT [ClassificationId]
       ,[MakeName]"
 
 ################################ Grouping #########################################
-ReportGrp<-
+ReportGrp_query<-
 "SET NOCOUNT ON
 DROP TABLE IF EXISTS #reptGrp
 SELECT Distinct
@@ -370,3 +375,7 @@ WHERE [ReportGroup] ='Global' AND CategoryId in (15,29,362)
 
 SELECT * FROM #reptGrp Order By ReportGroup"
 
+UsageList_query<-"SELECT  [CategoryId]
+      ,[SubcategoryId]   
+      ,[MeterCode]
+  FROM [ras_sas].[BI].[UsageAdjCoefficientsInProgress]"

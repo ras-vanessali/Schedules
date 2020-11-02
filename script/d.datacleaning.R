@@ -1,11 +1,4 @@
 
-### This process starts from effective date 2019-02-28 and will end in 2020-09-30. ###
-EOMList<-seq(as.Date('2019-03-01'),length=20,by='1 month') -1
-str <-sort(c(0:9,0:9))
-CatDtUse <-data.frame(EOMList,str)
-indexUse<- CatDtUse[CatDtUse$EOMList==publishDate,]$str
-
-
 ################# EDA of raw data ###################
 ## number of sales
 EDAview.N<-uploadData %>%
@@ -70,6 +63,7 @@ Datainput<-split.joinlevel(In,uploadData,'') %>%
   #filter((SaleType != 'Auction' & difftime(SaleDate, AcquisitionDate,units = "weeks")>78)
   #          | SaleType == 'Auction') %>%
   mutate(CompId = factor(CompId)) %>%
+  mutate(BorrowSchedule=NA,	BorrowType=NA) %>%
   group_by(Schedule,SaleType) %>%
   #summarise(mean = mean(SPvalue),st=sd(SPvalue))
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
@@ -79,9 +73,11 @@ if(CountryCode =='USA'){
   CatListing <- revised_listing %>%
     ### Used for Feb to Nov 2019: bring in caterpillar data 
     mutate(M1AppraisalBookPublishDate=as.factor(publishDate)) %>%
-    select(CompId,CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear, SaleDate,EffectiveDate, Country,SalePrice, M1Value
-           ,SaleType,M1AppraisalBookPublishDate,SaleAB, SPvalue,CurrentABCost,Age,Flag,YearFlag,Schedule) %>%
+    select(all_of(select.var))  %>%
     #mutate(SaleDate = as.Date(SaleDate),M1AppraisalBookPublishDate=as.Date(M1AppraisalBookPublishDate)) %>%
+    mutate(CategoryId = as.integer(CategoryId),SubcategoryId = as.integer(SubcategoryId),MakeId = as.integer(MakeId),ModelId = as.integer(ModelId) ) %>%
+    mutate(SaleDate = as.Date(SaleDate),M1AppraisalBookPublishDate = as.Date(M1AppraisalBookPublishDate))%>%
+    mutate(BorrowSchedule=NA,	BorrowType=NA) %>%
     filter(Flag == 'inUse') %>%
     group_by(Schedule) %>%
     filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
@@ -135,11 +131,19 @@ if (CountryCode == 'USA'){
   Data_comb <-rbind(Datainput,Datainput_Ret,Datainput_Auc)
 }
 
+### Exclude sold in new comps 
+Data_usedcomps.mark <- exc_new(merge(Data_comb,Usage_list,by=c('CategoryId','SubcategoryId'),all.x = T),time_min,meter_min)%>%
+  mutate(SaleAB = ifelse(isNew == 'Y', SaleAB /(1 + new_discount), SaleAB))
+
+Data_usedcomps<-rbind(Data_usedcomps.mark %>% filter(SaleType!='Retail'),
+                     Use_Latest_Data(Data_usedcomps.mark %>% filter(SaleType=='Retail'),'SaleDate',threshold_newsales,'newsales',''))
+
+  
 ###################################################################################################################
 ############ Run cooks distance using exponential regression for auction data that remove leverage points #########
 ###################################################################################################################
 
-SaleDtAuc_cd<-subset(Data_comb,Data_comb$SaleType=="Auction") %>% 
+SaleDtAuc_cd<-subset(Data_usedcomps,Data_usedcomps$SaleType=="Auction") %>% 
   filter(ModelYear >= ifelse(CategoryId %in% ListingIds,dep_endyr, ext_botYr) & ModelYear <=topyear) %>% 
   distinct()
 
@@ -167,7 +171,7 @@ leverage.pts<-subset(do.call(rbind,leveragelist),Age<3)$CompId
 ## remove leverage points
 #SaleDtAuc <-SaleDtAuc_cd %>% filter(!CompId %in% leverage.pts)
 ##update data_all
-Data_clean <- Data_comb %>% filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
+Data_clean <- Data_usedcomps %>% filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 
 
 ## Use recent data
@@ -181,14 +185,26 @@ Data.count3m <- Data.count %>%
   select(SaleType,Schedule,ModelYear)
 
 Data_all <- rbind(data.frame(merge(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(as.Date(EffectiveDate)>=thirdLastM))
-                  ,data.frame(anti_join(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(rowNum<=25)))
+                  ,data.frame(anti_join(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(rowNum<=threshold_rec.calc)))
 
 
 ### combine regular and borrow data for plots use only & exclude leverage points
+
 if (CountryCode == 'USA'){
-  Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
+  Data_plot_combind <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
     filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 } else{
-  Data_all_plot <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all) %>% 
+  Data_plot_combind <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all) %>% 
     filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 }
+
+### Exclude sold in new comps 
+Data_all_plot.mark <- exc_new(merge(Data_plot_combind,Usage_list,by=c('CategoryId','SubcategoryId'),all.x = T),time_min,meter_min)%>%
+  mutate(SaleAB = ifelse(isNew == 'Y', SaleAB /(1 + new_discount), SaleAB))
+
+Data_all_plot<-rbind(Data_all_plot.mark %>% filter(SaleType!='Retail'),
+            Use_Latest_Data(Data_all_plot.mark %>% filter(SaleType=='Retail'),'SaleDate',threshold_newsales,'newsales',''))
+
+                                     
+                                     
+                         

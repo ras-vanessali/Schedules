@@ -6,43 +6,51 @@
 ############################################## Executive file #####################################################
 ###################################################################################################################
 
-library(RODBC)
-library(RODBCext)
+library(odbc)
 library(lattice)
 library(latticeExtra)
-library(dplyr)
-library(tidyr)
-library(tibble)
-library(lubridate)
 library(xlsx)
-#library(readxl)
-library(stringr)
+library(lubridate)
+library(tidyverse)
 
-# country
-CountryCode = 'GBR'
-#CountryCode = 'USA'
-# db enviroment & connect
-DBserver = 'production' 
-#DBserver = 'rasquery'
-#DBserver ='gfdev04.rasgcp.net'
+# connect to db
+con <- dbConnect(
+  odbc::odbc(),
+  Driver='freetds',
+  Server='rasdata.rasgcp.net',
+  Database='ras_sas',
+  uid='RASDOMAIN\\vanessa.li',
+  pwd=rstudioapi::askForPassword("Database password"),
+  Port=1433
+)
+
+# country market
+#CountryCode = 'GBR'
+CountryCode = 'USA'
 
 
-## read input excel file and create a plot for storing the plots
-file_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules/doc"
+## file path where management file is
+input_path = "~/Project/ManagementFiles"
+## file path where plots and files export to
+file_path = "~/Project/Schedulescopy/doc"
+## file path where script are
+scripts_path = "~/Project/Schedulescopy/script"
+
+## management file
+excelfile = '20201022 SchedulesManagement.xlsx'
+
+## create folders to save the plots
 setwd(file_path)  
-excelfile = '20200710 SchedulesManagement.xlsx'
 plotFolder = paste("Plots",Sys.Date())
 dir.create(plotFolder)
 
 
-## set directory of r scripts
-scripts_path = "C:/Users/vanessa.li/Documents/GitHub/Schedules/script"
+## run inputs and functions
 setwd(scripts_path) 
 runa<-parse('a.input&func.r')
 eval(runa)
 
-channel<-odbcConnect(DBserver)
-
+## load data
 starttime_dtload<-Sys.time()
 ## run sql queries
 if (CountryCode == 'USA'){
@@ -50,37 +58,51 @@ if (CountryCode == 'USA'){
   runb<-parse('b.sqlQueries_US.r')
   eval(runb)
   publishDate <- Sys.Date() - days(day(Sys.Date()))
-  uploadData <- sqlQuery(channel,US_dataload)
-  uploadListing <- sqlQuery(channel,Listing_dataload)
-  MakeAdjData <- sqlExecute(channel,MakeAdjust_dataload,CategoryId, fetch=T)
-  LastMonth_Sched <- sqlQuery(channel,LM_USA_load)
-  LastMonth_depr <- sqlQuery(channel,Last_depr_USAload)
-  AllClass <- sqlQuery(channel,AllClass)
-  ReportGrp <-sqlQuery(channel,ReportGrp)
+  uploadData <- dbGetQuery(con,US_dataload)
+  uploadListing <- dbGetQuery(con,Listing_dataload)
+  ########## Parameterized Sql #############
+  #MakeAdjData <- sqlExecute(con,MakeAdjust_dataload,CategoryId, fetch=T)
+  Query <- odbc::dbSendQuery(con, MakeAdjust_dataload)
+  
+  MakeAdjreturn = list()
+  for (i in 1:nrow(CategoryId)){
+    odbc::dbBind(Query, CategoryId[i,])
+    dat<-odbc::dbFetch(Query)
+    MakeAdjreturn[[i]] <- dat
+  }
+  
+  MakeAdjData = do.call(rbind, MakeAdjreturn)
+  ############################################
+  LastMonth_Sched <- dbGetQuery(con,LM_USA_load)
+  LastMonth_depr <- dbGetQuery(con,Last_depr_USAload)
+  AllClass <- dbGetQuery(con,AllClass_query)
+  ReportGrp <-dbGetQuery(con,ReportGrp_query)
+  Usage_list<-dbGetQuery(con,UsageList_query)
   
 } else{
   setwd(scripts_path) 
   runb<-parse('b.sqlQueries_UK.r')
   eval(runb)
   publishDate <- Sys.Date() - days(day(Sys.Date())) - days(day(Sys.Date() - days(day(Sys.Date()))))
-  uploadData <- sqlQuery(channel,UK_dataload)
-  #listingData <- sqlQuery(channel,Listing_dataload)
-  MakeAdjData <- sqlExecute(channel,MakeAdjust_dataloadUK,CategoryId, fetch=T)
-  LastMonth_Sched <- sqlQuery(channel,LM_UK_load)
-  LastMonth_depr <- sqlQuery(channel,Last_depr_UKload)
-  AllClass <- sqlQuery(channel,AllClass)
-  ReportGrp <-sqlQuery(channel,ReportGrp)
+  uploadData <- dbGetQuery(con,UK_dataload)
+  #listingData <- dbGetQuery(con,Listing_dataload)
+  MakeAdjData <- dbGetQuery(con,MakeAdjust_dataloadUK,CategoryId, fetch=T)
+  LastMonth_Sched <- dbGetQuery(con,LM_UK_load)
+  LastMonth_depr <- dbGetQuery(con,Last_depr_UKload)
+  AllClass <- dbGetQuery(con,AllClass_query)
+  ReportGrp <-dbGetQuery(con,ReportGrp_query)
 }
 end_time_dtload <- Sys.time()
 end_time_dtload - starttime_dtload
 
-####
-#publishDate = as.Date('2019-08-31')
+#### effective dates
 thirdLastM<-as.Date(publishDate%m-% months(1)- days(day(publishDate)))
 sixLastM<-as.Date(publishDate%m-% months(5)- days(day(publishDate)))
+
+
+
 setwd(scripts_path) 
 ## Read the R script
-
 runc<-parse('c.listings.r')
 rund<-parse('d.datacleaning.r')
 rune<-parse('e.buildmodel.r')
@@ -89,9 +111,6 @@ rung<-parse('g.violationcheck.r')
 runh<-parse('h. depreciation&monthlimit.r')
 runi<-parse('i.makeschedules.r')
 runj<-parse('j.upload&plots.r')
-
-
-
 
 
 
@@ -124,7 +143,7 @@ if (CountryCode == 'USA'){
   write.xlsx2(as.data.frame(EDAview.N.trans),file = paste(publishDate,CountryCode," EDA.xlsx"),sheetName = 'NumUnits',row.names =F)
   write.xlsx2(as.data.frame(EDAview.mean.trans),file = paste(publishDate,CountryCode," EDA.xlsx"),sheetName = 'SPValMean',row.names =F,append=T)
 } else{
-  
+# UK  
   eval(rund)
   print('Data cleaning is done')
   eval(rune)

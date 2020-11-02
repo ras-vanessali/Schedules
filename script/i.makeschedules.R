@@ -166,7 +166,7 @@ lastM_schedule_make<-LastMonth_Sched %>%
 
 
 MoMlimit<-merge(CapMakeSchedule,LastMonth_Sched %>% filter(!is.na(MakeId)) %>% select(ClassificationId,ModelYear,CurrentFmv,CurrentFlv),by=c("ClassificationId","ModelYear"),all.x=T) %>%
-  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM)),
+  mutate(limit_fmv = ifelse(is.na(CurrentFmv),fmv_make,ifelse(ModelYear %in% c(2019,2020),MoMlimitFunc(CurrentFmv,fmv_make,limDw_MoM_spec,limDw_MoM_spec),MoMlimitFunc(CurrentFmv,fmv_make,limUp_MoM,limDw_MoM))),
          limit_flv = ifelse(is.na(CurrentFlv),flv_make,MoMlimitFunc(CurrentFlv,flv_make,limUp_MoM,limDw_MoM))) %>%
   arrange(ClassificationId,ModelYear)
 

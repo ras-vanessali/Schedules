@@ -4,13 +4,15 @@ CatlevelListing<-rbind(In %>% filter(str_detect(Schedule,'Crane')),In.brwcrane %
 ### Join in Category level 
 retailCrane <- merge(uploadData,CatlevelListing, by=c("CategoryId","Country")) %>%
   filter(CategoryId %in% ListingIds & SaleType == 'Retail' & Age >=2 & Age<=20) %>%
-  select(CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear ,SaleType,SaleAB, Age,Schedule,Flag,SaleDate,EffectiveDate)
+  select(CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear ,SaleType,SaleAB, 
+         Age,Schedule,Flag,SaleDate,AcquisitionDate,EffectiveDate,MilesHours,MilesHoursCode)
 
 
 ### Listing - Join in Category level 
 listingCrane <- merge(uploadListing,CatlevelListing, by=c("CategoryId","Country")) %>%
   filter(CategoryId %in% ListingIds & Age >=2 & Age<=20) %>%
-  select(CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear,SaleType,SaleAB, Age,Schedule,Flag,DateScrapedMostRecent,EffectiveDate) %>%
+  select(CategoryId, CategoryName, SubcategoryId,SubcategoryName,MakeId, MakeName, ModelId, ModelName, ModelYear,SaleType,SaleAB, 
+         Age,Schedule,Flag,DateScrapedMostRecent,AcquisitionDate,EffectiveDate,MilesHours,MilesHoursCode) %>%
   rename(SaleDate =DateScrapedMostRecent)
 
 
