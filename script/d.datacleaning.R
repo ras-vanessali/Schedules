@@ -1,4 +1,4 @@
-
+"
 ################# EDA of raw data ###################
 ## number of sales
 EDAview.N<-uploadData %>%
@@ -9,6 +9,22 @@ EDAview.N<-uploadData %>%
 EDAview.N.trans<-spread(EDAview.N,EffectiveDate,n)
 EDAview.N.trans[is.na(EDAview.N.trans)]=0
 
+### read last month EDA file
+read_lastmonth = read.xlsx(paste(LastM,CountryCode,'EDA.xlsx'), sheetIndex = 1,check.names = FALSE) 
+merge_eda.lm<-edaview(read_lastmonth)
+colnames(merge_eda.lm)<-c('SaleType','CategoryName','first.lm','last.lm','mid.lm')
+
+eda.cm<-edaview(data.frame(EDAview.N.trans))
+colnames(eda.cm)<-c('SaleType','CategoryName','first.cm','last.cm','mid.cm')
+
+## join last month to this month
+join.eda.counts<-merge(merge_eda.lm,eda.cm,all = TRUE) %>%
+  mutate(change_inunchange = percent(mid.cm/mid.lm-1),
+         change_inchangemonth = percent(last.cm/first.lm-1)) %>%
+  select(SaleType,CategoryName,mid.cm,mid.lm,last.cm,first.lm,change_inunchange,change_inchangemonth) %>%
+  rename(unchange_current = mid.cm, unchange_lastmonth = mid.lm,
+          gain_current= last.cm,lost_lastmonth= first.lm)
+
 ## average sp/m1
 EDAview.mean<-uploadData %>%
   filter(Flag =='inUse') %>%
@@ -18,34 +34,32 @@ EDAview.mean<-uploadData %>%
 EDAview.mean.trans<-spread(EDAview.mean,EffectiveDate,meanValue)
 EDAview.mean.trans[is.na(EDAview.mean.trans)]=0.0000
 
-
+"
 ###################################################################################################################
 ###################################################################################################################
 ######################################## Make Data Merge & Clean ##################################################
 ###################################################################################################################
 ###################################################################################################################
-#if(CountryCode == 'USA'){
-####### Prepare the candidate output list for Part 3 schedules ########
-####### ClassId list = All - Out - OutR ########
+
+####### ClassId list of make adjusted classifications= All - Out - OutR ########
 Out_make <- anti_join(AllClass,comb_Out %>% select(ClassificationId),by='ClassificationId') %>%
   select(ClassificationId,CategoryName,CategoryId,SubcategoryName,SubcategoryId,MakeName,MakeId)
 
 ######## Join MList with Out + OutR tab (SubcatGroup) to get the CS - Schedule map ##########
 ### Subset of Out +OutR tab
-
+## C-M level
 CatMakemap<-merge(Mlist %>% filter(ApplyToAllCSMs =='Y' & SubcategoryId =='NULL') %>% select(CategoryId),comb_Out %>% filter(Level2=='SubcatGroup'), by='CategoryId') %>%
   filter(SubcategoryId !='NULL') %>%
   select(Schedule,CategoryId,SubcategoryId) 
-
+## CS-M level
 SubcatMakemap <-merge(Mlist %>% filter(ApplyToAllCSMs =='Y' & SubcategoryId != 'NULL') %>% select(SubcategoryId),comb_Out %>% filter(Level2=='SubcatGroup'), by='SubcategoryId') %>%
   select(Schedule,CategoryId,SubcategoryId) 
-
+## join
 joinmap_make <-merge(rbind(CatMakemap,SubcatMakemap),ReportGrp,by='CategoryId') 
-
 
 ######## Prepare the output mapping table for all makes schedules ########
 make_output<-merge(joinmap_make,Out_make,by=c('CategoryId','SubcategoryId')) %>% filter(!is.na(MakeId))
-#}
+
 
 ###################################################################################################################
 ###################################################################################################################
@@ -60,14 +74,13 @@ make_output<-merge(joinmap_make,Out_make,by=c('CategoryId','SubcategoryId')) %>%
 ### Combine C, CS and CSM levels of data into one & exclude bad data
 Datainput<-split.joinlevel(In,uploadData,'') %>%
   filter(as.Date(EffectiveDate)<=publishDate & Flag =='inUse')%>%
-  #filter((SaleType != 'Auction' & difftime(SaleDate, AcquisitionDate,units = "weeks")>78)
-  #          | SaleType == 'Auction') %>%
   mutate(CompId = factor(CompId)) %>%
   mutate(BorrowSchedule=NA,	BorrowType=NA) %>%
   group_by(Schedule,SaleType) %>%
   #summarise(mean = mean(SPvalue),st=sd(SPvalue))
   filter(SPvalue <= mean(SPvalue) + stdInd*sd(SPvalue) & SPvalue>= mean(SPvalue) - stdInd*sd(SPvalue)) 
 
+### same above for listing
 if(CountryCode =='USA'){
   ### Listing - Join in Category level 
   CatListing <- revised_listing %>%
@@ -140,13 +153,14 @@ Data_usedcomps<-rbind(Data_usedcomps.mark %>% filter(SaleType!='Retail'),
 
   
 ###################################################################################################################
-############ Run cooks distance using exponential regression for auction data that remove leverage points #########
+############ Running cooks distance using exponential regression for auction data to remove leverage points #########
 ###################################################################################################################
-
+### subset auction data
 SaleDtAuc_cd<-subset(Data_usedcomps,Data_usedcomps$SaleType=="Auction") %>% 
   filter(ModelYear >= ifelse(CategoryId %in% ListingIds,dep_endyr, ext_botYr) & ModelYear <=topyear) %>% 
   distinct()
 
+## Regression model 
 leveragelist<-list()
 SchedRetBorw <-SchedR %>% filter(BorrowType=='AuctionBorrowRetail')
 auc_regression <- rbind(SchedRetBorw %>% select(Schedule),Sched %>% select(Schedule)) %>% distinct()
@@ -155,7 +169,6 @@ nSched_Auc<-dim(auc_regression)[1]
 for (j in 1:nSched_Auc){
   
   groupData<-SaleDtAuc_cd %>% filter(Schedule==auc_regression[j,1])
-  
   fit<-lm(SaleAB ~ Age,data = groupData)
   cooksd <- cooks.distance(fit)
   influential <- as.numeric(names(cooksd)[(cooksd > 40*mean(cooksd, na.rm=T) | cooksd >1)])
@@ -167,14 +180,12 @@ for (j in 1:nSched_Auc){
 ## save the list of ids that marked as leverage points
 leverage.pts<-subset(do.call(rbind,leveragelist),Age<3)$CompId
 
-
 ## remove leverage points
-#SaleDtAuc <-SaleDtAuc_cd %>% filter(!CompId %in% leverage.pts)
 ##update data_all
 Data_clean <- Data_usedcomps %>% filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 
 
-## Use recent data
+############################## Use only recent data ############################
 Data.count<-Data_clean %>%
   group_by(SaleType,Schedule,ModelYear) %>%
   arrange(desc(SaleDate)) %>%
@@ -184,12 +195,12 @@ Data.count3m <- Data.count %>%
   filter(as.Date(EffectiveDate)>=thirdLastM & rowNum ==threshold_rec.calc) %>%
   select(SaleType,Schedule,ModelYear)
 
+## Use at least 3 months data, up to threshold_rec.calc if there is not enough threshold_rec.calc data in recent 3 months
 Data_all <- rbind(data.frame(merge(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(as.Date(EffectiveDate)>=thirdLastM))
                   ,data.frame(anti_join(Data.count,Data.count3m,by=c('SaleType','Schedule','ModelYear')) %>% filter(rowNum<=threshold_rec.calc)))
 
 
 ### combine regular and borrow data for plots use only & exclude leverage points
-
 if (CountryCode == 'USA'){
   Data_plot_combind <-rbind(Datainput,Datainput_BothBrw,aucBorrow_all,retBorrow_all,CatListing) %>% 
     filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
@@ -198,7 +209,7 @@ if (CountryCode == 'USA'){
     filter(!(SaleType =='Auction' & CompId %in% leverage.pts))
 }
 
-### Exclude sold in new comps 
+### Exclude sold in new comps for plot
 Data_all_plot.mark <- exc_new(merge(Data_plot_combind,Usage_list,by=c('CategoryId','SubcategoryId'),all.x = T),time_min,meter_min)%>%
   mutate(SaleAB = ifelse(isNew == 'Y', SaleAB /(1 + new_discount), SaleAB))
 

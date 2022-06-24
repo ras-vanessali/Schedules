@@ -1,13 +1,9 @@
-
-#################### The upload file consists of 4 parts #####################
-# Part 1: regular schedules - Out
-# Part 2: auction borrow schedules - OutR
-# Part 3: make level schedules (scaled with make adjusters)
-# Part 4: tier 3 make schedules
-
+################################# Declare input parameters ###########################
+## In logistic model, mid point in age '3'scal' 
 scal=3
+
 ## Model Year in use
-topyear = 2020 ## top model year
+topyear = 2022 ## top model year
 comingyr = topyear+1 ## top model year pulling from db, used for appreciation
 botyear = topyear-9 ## bottom model year
 ext_botYr = topyear-11 ## bottom model year of putting in regression
@@ -15,28 +11,30 @@ dep_endyr = topyear-15 ## bottom model year pulling from db, used for depreciati
 
 ## at what age joint the logistic and exponential 
 age_joint = 7
+## indicate age from the joint year
+depr_curve <- 1:4
 
 ## set the minimum gap between adjacent years generally, some specific cases may not use this value
 indexcap = 0.0300
 
 ## set the limit movement from last month
-limUp_MoM = .04
-limDw_MoM = .06
-limDw_MoM_spec = 3
+limUp_MoM = .05
+limDw_MoM = .07
+limDw_MoM_spec = .5
 
-## thresholds of #datapoints - use to move schedules from regression
-#t1<-3 t2<-6 t3<-10 t4<-15 t5<-21 t6<-28
-threshold_adj = 25
-threshold_brw = 30
+## thresholds of #datapoints 
+threshold_adj = 15
+threshold_special = 10
+threshold_brw = 30 
 threshold_recency = 40
 threshold_rec.calc = 25
 threshold_appr = 30
 threshold_newsales = 30
 
-
+## cap for recency move
 recency_cap = 0.25
 
-## set the minimum gap between two channels
+## minimum gap between two channels
 if (CountryCode == 'USA'){
   capChannel = 0.10
 } else{
@@ -45,11 +43,9 @@ if (CountryCode == 'USA'){
 
 ## use for channel confict - distinguish older and newer age
 chanyr = 3
-## use for channel check who govern in middel years. retail data >5, Auction governs
+## use for channel check who govern in mid years. retail data >5, Auction governs
 retBelieve = 5 
 
-### borrow schedule first year move
-brwsched_move = .1
 
 ### new sale discount applied on each new units sale
 new_discount = .040
@@ -57,6 +53,8 @@ new_discount = .040
 ## newest year in auction have to be in the range
 capMonthpct = 0.01
 
+## cap on listing reduction factor
+cap_listing = .20
 ## set the bounds of could-be lowest and highest schedule
 UpperB = 3
 LowerB = 0
@@ -80,12 +78,12 @@ depBound_bot = 0.020
 depBound_na = 0.040
 
 DeprMoMLimit = 0.002
-ApprMoMLimit = 0.01
+ApprMoMLimit = 0.5
 
 appr_ageuse_fix = 1
+
 ## set the index of standard deviation side of mean 
 stdInd =2
-
 
 ## Make adjusters caps
 makeSFupp = 1.3
@@ -98,8 +96,10 @@ Min_delta =0.1
 thredtpts.sched = 50
 thredtpts = 15
 
+### borrow schedule first year move
+brwsched_move = .1
 ## use for phase in factors on each model year
-phaseinAge = 6
+phaseinAge = 5
 phaseinFactor =0.15
 
 ## Last two years in schedules - limit the shift
@@ -110,7 +110,7 @@ lastyr_2 = 0.10
 ## use for the second end year - prevend rebasing jump
 x = 0.05
 ## use for the first end year violate second end year
-endYrRate = 0.03
+rebase_limit = 0.03
 
 ## Global category list
 GlobalList<-c(313,	6,	2509,	15,	29,	315,	360,	451,	316,	362)
@@ -124,16 +124,21 @@ time_min = 18
 meter_min = 100
 
 
-setwd(input_path)  
 ################################################# Read tabs in file ##########################################################
 ### load the inputfeed file
+setwd(input_path) 
+#regular
 In<-data.frame(read.xlsx(excelfile,sheetName='In')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CanadaPlots)
+# retail borrow auction
 InR<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='RetailBorrowAuction')
+# auction borrow retail
 InA<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='AuctionBorrowRetail')
+# borrow both
 InB<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(BorrowType=='BorrowBoth')
+# cranes
 In.brwcrane<-data.frame(read.xlsx(excelfile,sheetName='InR')) %>% filter(Country==CountryCode) %>% select(-ClassificationId,-Plot,-CategoryName,-SubcategoryName,-MakeName,-CSMM,-ValidSchedule,-CheckJoin) %>% 
   filter(str_detect(Schedule,'Crane'))
 
@@ -142,19 +147,21 @@ Out<-data.frame(read.xlsx(excelfile,sheetName='Out')) %>% filter(Country==Countr
 OutR<-data.frame(read.xlsx(excelfile,sheetName='OutR')) %>% filter(Country==CountryCode)
 
 ### Application tab
-comb_Out<-rbind(Out %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId, Level2,Plot),OutR %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId,Level2,Plot))
+comb_Out<-rbind(Out %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId, MakeId, Level2,Plot),OutR %>% select(ClassificationId, Schedule, CategoryId,SubcategoryId,MakeId,Level2,Plot))
 
 ### load the Sched file
 Sched<-data.frame(read.xlsx(excelfile,sheetName='Sched',startRow=6)) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax) 
 SchedR<-data.frame(read.xlsx(excelfile,sheetName='SchedR',startRow=6)) %>% filter(Country==CountryCode) %>% select(Schedule,RetailNewYrMin, RetailNewYrMax, AuctionNewYrMin, AuctionNewYrMax,BorrowSchedule,BorrowType) 
 SchedFullList<-rbind(Sched,SchedR %>% select(-BorrowSchedule,-BorrowType))
 
-### load make adjustments related tabs
-Mlist<-data.frame(read.xlsx(excelfile,sheetName='MList')) %>% filter(Country==CountryCode) %>% select(ClassificationId,ApplyToAllCSMs,Country,CategoryId,SubcategoryId,CategoryName,SubcategoryName)
+### load make/model adjustments related tabs
+Mlist<-data.frame(read.xlsx(excelfile,sheetName = 'MList')) %>% filter(Country==CountryCode) %>% select(ClassificationId,ApplyToAllCSMs,Country,CategoryId,SubcategoryId,CategoryName,SubcategoryName)
+ModelList<-data.frame(read.xlsx(excelfile,sheetName = 'ModelList')) %>% filter(Country==CountryCode) %>% select(ClassificationId,Country,CategoryId,SubcategoryId,CategoryName,SubcategoryName)
 # Category who needs to run make level schedule
 MakeAdj_CatL <- Mlist %>% distinct(CategoryId)
+# use for iterate sql query 
 CategoryId <- cbind(MakeAdj_CatL, MakeAdj_CatL)
-
+# All categories in use
 Categ_fullLs <- rbind(In['CategoryId'],InR['CategoryId'],InA['CategoryId']) %>% distinct()
 
 
@@ -162,7 +169,7 @@ Categ_fullLs <- rbind(In['CategoryId'],InR['CategoryId'],InA['CategoryId']) %>% 
 #######################################################################################################################
 ##################################################### Build Functions  ################################################
 #######################################################################################################################
-### build function for which year use for drive
+### build function for which year use for drives
 fixyr_gap <- function(Schedule){
   fixyr = ifelse(str_detect(Schedule,'Cranes'), 5, 3)
   return(fixyr)
@@ -230,7 +237,7 @@ cranes_value <-function(Schedule,value,value_crane){
   return(value_return)
 }
 
-### build function to comput how many months different between two dates. 
+### build function to compute how many months different between two dates. 
 elapsed_months <- function(end_date, start_date) {
   ed <- as.POSIXlt(end_date)
   sd <- as.POSIXlt(start_date)
@@ -242,7 +249,7 @@ exc_new <- function(df,mintime,minmeter){
   
   df_mod<-df %>%
     mutate(my_update = paste(ModelYear,'-07-01',sep='')) %>%
-    ## if purchased usaed, the machine is used
+    ## if purchased used, the machine is used
     mutate(IsPurchasedUsed = ifelse(is.na(AcquisitionDate),'Unknown',
                                     ifelse(between(interval(AcquisitionDate,as.Date(my_update)) %/% months(1),-10,10),'New','Used'))) %>%
     mutate(MeterAdj = ifelse(is.na(MeterCode) | MeterCode == 'M',"N","Y"))
@@ -275,7 +282,8 @@ exc_new <- function(df,mintime,minmeter){
 
 
 
-###split join level
+###split join level 
+###each assets may appear multi times, in different levels. 
 select.var<-c('CompId',	'CategoryId',	'CategoryName',	'SubcategoryId',	'SubcategoryName',	'MakeId',	'MakeName',	'ModelId',	'ModelName',	
               'ModelYear',	'SaleDate','AcquisitionDate','ModAcqDate','EffectiveDate',	'SalePrice',	'M1Value',	'SaleType',	'M1AppraisalBookPublishDate',	'SaleAB',	
               'SPvalue',	'CurrentABCost',	'Age',	'Flag',	'YearFlag',	'Schedule','MilesHours','MilesHoursCode') 
@@ -285,35 +293,28 @@ split.joinlevel<-function(input,dataload,brwtype){
   
   Catlevel<-input %>% filter(Level2 =='Category') %>% select(-SubcategoryId,-MakeId)
   Subcatlevel<-input %>% filter(Level2 == "SubcatGroup") %>% select(-MakeId)
-  Makelevel<-input %>% filter(Level2 =='Make')
+  Makelevel<-input %>% filter(Level2 %in% c('Make','MakeGroup'))
   
   if(brwtype=='brw'){
-    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      select(c(select.var,select.var.brw)) 
+    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% select(c(select.var,select.var.brw)) 
     
-    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      select(c(select.var,select.var.brw)) 
+    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% select(c(select.var,select.var.brw)) 
     
     MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(c(select.var,select.var.brw)) 
   }
   else{
-    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      select(all_of(select.var)) 
+    CatData <- merge(dataload,Catlevel, by=c("CategoryId","Country")) %>% select(all_of(select.var)) 
     
-    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% 
-      mutate(str = str_sub(CompId,-1)) %>%
-      select(all_of(select.var)) 
+    SubcatData <- merge(dataload,Subcatlevel, by=c('CategoryId',"SubcategoryId","Country")) %>% select(all_of(select.var)) 
     
     MakeData<-merge(dataload,Makelevel, by=c('CategoryId',"SubcategoryId","MakeId","Country")) %>% select(all_of(select.var)) 
   }
   
   return(rbind(CatData,SubcatData,MakeData))}
 
+### function to use most recent time data
 Use_Latest_Data<-function(df,sort_var,thresholdNum,use_case,recent_time){
-  
+#  
   if(sort_var == 'SaleDate'){
      if(use_case == 'shift'){
       rows_count<-df %>%
@@ -378,4 +379,56 @@ Use_Latest_Data<-function(df,sort_var,thresholdNum,use_case,recent_time){
                            data.frame(anti_join(rows_count,morethan_thres_list,by='Schedule') %>% filter(rowNum<=thresholdNum)))
   }
   return(recent_output)
+}
+
+## write a function to view the EDA by month 
+edaview <- function(yeartable){
+  first_last<-yeartable %>% select(1,2,3,14)
+  mid<-yeartable %>% select(1,2,4:13) %>% mutate(midsum = rowSums(.[3:12])) %>% select(1,2,13)
+  
+  merge<-merge(first_last,mid,all = TRUE)
+  return(merge)
+}
+
+percent <- function(x, digits = 0, format = "f", ...) {      # Create user-defined function
+  paste0(formatC(x * 100, format = format, digits = digits, ...), "%")
+}
+
+
+## format the depreciation and appreciation rate for output file
+format_depr <-function(input_table,channel){
+  output_table<-input_table %>%
+    rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
+    mutate(MarketCode = market, ScheduleType = channel, ModelYear ='', CostPercent='') %>%
+    select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
+  return(output_table)
+}
+
+## application - partial move
+partial_move<-function(n,threshold,factor,n_limit){
+  result = pmin(1,pmax(n,n_limit)/threshold)*(factor-1)+1
+  return(result)
+}
+
+## factor calculation by number of data points
+cap_factor_calc<-function(n,threshold,factor){
+  result = ifelse(n > threshold, 1 * factor, ((threshold-n) + n*factor)/threshold)
+  return(result)
+}
+
+
+## function of sum product
+sum_product <- function(value1, value2, count1, count2){
+  count1 = ifelse(is.na(count1), 0, count1)
+  count2 = ifelse(is.na(count2), 0, count2)
+  result = (value1 * count1 + value2 * count2) / (count1 + count2)
+  return(result)
+}
+
+partial_listing_discount<-function(threshold,n,factor1,factor2){
+  f1 = factor1 + 1
+  f2 = factor2 + 1
+  partial_factor = (n/threshold)*(0.5)*(f1/f2-1)+f2
+  capfactor = ifelse(n>100, f1, partial_factor)
+  return(capfactor)
 }

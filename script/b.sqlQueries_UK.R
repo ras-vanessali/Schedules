@@ -3,10 +3,10 @@
 UK_dataload<-"
                SET NOCOUNT ON                    
 
-			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-2,GETDATE()))-2, -1) as date)
-			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
+			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-2,GETDATE()))-1, -1) as date)
+			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-1, -1) AS date)
 
-            Declare @topyear INT = 2020
+            Declare @topyear INT = 2022
             Declare @compingyr INT = @topyear+1
 					  Declare @botyear INT =  @compingyr-10
 					  Declare @ext_botYr INT = @compingyr-12
@@ -34,6 +34,10 @@ UK_dataload<-"
                     ,BIC.[ModelName]
                     ,BIC.[ModelYear]
                     ,BIC.SaleDate
+                    ,CustomerId
+                    ,Equipno
+                    ,CASE WHEN BIC.AcquisitionDate IS NULL THEN datefromparts(BIC.ModelYear, 7, 1)
+					          ELSE BIC.AcquisitionDate END AS ModAcqDate
                     ,BIC.AcquisitionDate
                     ,EOMONTH(BIC.SaleDate) as EffectiveDate
 					,BIC.OptionValue03 as SalePrice
@@ -55,8 +59,8 @@ UK_dataload<-"
                     ,CASE WHEN BIC.Modelyear < @botyear or BIC.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
                 
 				INTO #Retail      
-                FROM [ras_sas].[BI].[Comparables] BIC
-				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
+                FROM [ras_sas].[BI].[Comparables] BIC with (nolock)
+				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET with (nolock)
 
 				On BIC.[EquipmentTypeId] = ET.[EquipmentTypeId] 
                     
@@ -69,7 +73,7 @@ UK_dataload<-"
                 AND BIC.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                 AND BIC.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
 					        AND NOT (BIC.[SubcategoryId] in (2806,2808,2001,2636) and BIC.makeid=31 and BIC.ModelName not like 'XQ%')  
-					       
+					       AND NOT (BIC.CategoryId=2616 and BIC.[Description] like '%glider%')
                 AND BIC.SaleDate >@dateStart AND BIC.saledate<=@dateEnd
                 --AND BIC.SaleDate >='2017-11-01' AND BIC.saledate<='2019-10-31'
                 AND BIC.ModelYear <= @compingyr and BIC.ModelYear>=@dep_endyr
@@ -77,6 +81,7 @@ UK_dataload<-"
                 AND ET.[CurrentABCost] is not NULL
                 AND BIC.M1PrecedingFmv  is not NULL
                 AND BIC.Option15 is NULL 
+               -- AND (ET.CostSource <>'UK Estimated Cost Ratio' or ET.CostSource IS NULL)
 
 
 				Drop Table if exists #Auction
@@ -93,6 +98,10 @@ UK_dataload<-"
                     ,AucS.[ModelName]
                     ,AucS.[ModelYear]
                     ,AucS.SaleDate
+                    ,AuctioneerId as CustomerId
+                    ,'' Equipno
+                    ,CASE WHEN datefromparts(ModelYear, 7, 1) IS NULL THEN datefromparts(AucS.ModelYear, 7, 1)
+					          ELSE datefromparts(ModelYear, 7, 1) END AS ModAcqDate
                     ,datefromparts(ModelYear, 7, 1) as AcquisitionDate
                     ,EOMONTH(AucS.SaleDate) as EffectiveDate
 					,AucS.SalePrice as SalePrice
@@ -114,8 +123,8 @@ UK_dataload<-"
                     
 				   ,CASE WHEN AucS.Modelyear < @botyear or AucS.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
                 INTO #Auction    
-                FROM [ras_sas].[BI].[AuctionSales] AucS
-				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
+                FROM [ras_sas].[BI].[AuctionSales] AucS with (nolock)
+				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET with (nolock)
 
 				On AucS.[EquipmentTypeId] = ET.[EquipmentTypeId] 
                     
@@ -123,12 +132,14 @@ UK_dataload<-"
 				AND AucS.CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
                 AND AucS.MakeId NOT in (58137,78) --Miscellaneous,Not Attributed,Various
 					        AND NOT (AucS.[SubcategoryId] in (2806,2808,2001,2636) and AucS.makeid=31 and AucS.ModelName not like 'XQ%')  
+					        AND NOT (AucS.CategoryId=2616 and (AucS.[Description] like '%glider%' or AucS.AuctioneerClassification like '%glider%'))
                 AND AucS.SaleDate >@dateStart AND AucS.saledate<=@dateEnd
                 --AND AucS.SaleDate >='2017-11-01' AND AucS.saledate<='2019-10-31'
                 AND AucS.ModelYear <= @compingyr and AucS.ModelYear>=@dep_endyr
                 AND AucS.SalePrice>100
                 AND ET.[CurrentABCost] is not NULL
                 AND AucS.M1PrecedingFlv is not NULL
+                --AND (ET.CostSource <>'UK Estimated Cost Ratio' or ET.CostSource IS NULL)
 
  SELECT * FROM #Retail 
  Union ALL
@@ -141,10 +152,10 @@ CategoryId <- cbind(MakeAdj_CatL, MakeAdj_CatL,MakeAdj_CatL)
 MakeAdjust_dataloadUK<-
   "                    
              SET NOCOUNT ON                    
-			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-3,GETDATE()))-2, -1) as date)
-			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-2, -1) AS date)
-				  Declare @month6 Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-8, -1) AS date) 
-            Declare @topyear INT = 2020
+			      Declare @dateStart DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, DATEADD(year,-3,GETDATE()))-1, -1) as date)
+			      Declare @dateEnd DATE = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-1, -1) AS date)
+				  Declare @month6 Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, -1, GETDATE())-7, -1) AS date) 
+            Declare @topyear INT = 2022
             Declare @compingyr INT = @topyear+1
 					  Declare @botyear INT =  @compingyr-10
 					  Declare @ext_botYr INT = @compingyr-12
@@ -194,8 +205,8 @@ Declare @Age_f INT = 12
                     ,CASE WHEN BIC.Modelyear < @botyear or BIC.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
                 
 				INTO #Retail      
-                FROM [ras_sas].[BI].[Comparables] BIC
-				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
+                FROM [ras_sas].[BI].[Comparables] BIC with (nolock)
+				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET with (nolock)
 				On BIC.[EquipmentTypeId] = ET.[EquipmentTypeId] 
                     
                 WHERE 
@@ -246,9 +257,10 @@ Declare @Age_f INT = 12
                     ELSE 'inUse' END AS 'Flag'
                     
 				   ,CASE WHEN AucS.Modelyear < @botyear or AucS.Modelyear >@topyear THEN 'ExtYrs' ELSE 'AdjusUseYr' END AS 'YearFlag'
+				  -- ,ET.CostSource
                 INTO #Auction    
-                FROM [ras_sas].[BI].[AuctionSales] AucS
-				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET
+                FROM [ras_sas].[BI].[AuctionSales] AucS with (nolock)
+				Inner Join [ras_sas].[BI].[EquipmentTypesInProgressMKT] ET with (nolock)
 				On AucS.[EquipmentTypeId] = ET.[EquipmentTypeId] 
                     
                 WHERE  ET.[MarketCode]='GBUK' and AucS.CountryCode ='GBR' AND AucS.CurrencyCode='GBP' 
@@ -261,6 +273,7 @@ Declare @Age_f INT = 12
                 AND AucS.SalePrice>100
                 AND ET.[CurrentABCost] is not NULL
                 AND AucS.M1PrecedingFlv is not NULL
+                --AND (ET.CostSource <>'UK Estimated Cost Ratio' or ET.CostSource IS NULL)
 							 
 Drop Table If exists #M1Value 
 	  SELECT  [ClassificationId]
@@ -288,6 +301,7 @@ from(
 	SELECT tbData.CategoryId,tbData.CategoryName, tbData.SubcategoryId,tbData.SubcategoryName, tbData.MakeId, tbData.MakeName,tbData.SaleType,SaleDate	
 	,CASE WHEN SaleType='Auction' THEN SalePrice/(FlvSchedulePercentage*tbData.CurrentABCost/100)
 	ELSE SalePrice/(FmvSchedulePercentage*tbData.CurrentABCost/100) END AS spValue
+	--,ET.CostSource
 	FROM 
 	( SELECT * FROM #Retail 
 		Union ALL
@@ -305,7 +319,7 @@ where not(SaleDate<=@month6 and rowNum >@recentThreshold)
 ################################## 1.C Input last month category and subcat level schedule #####################################
 
 LM_UK_load<-"
-Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-2, -1) AS date)
+Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
 
 SELECT [ClassificationId]
       ,[CategoryId]
@@ -317,28 +331,28 @@ SELECT [ClassificationId]
       ,[ModelYear]
       ,[FmvSchedulePercentage]/100 as CurrentFmv
       ,[FlvSchedulePercentage]/100 as CurrentFlv
-  FROM [ras_sas].[BI].[AppraisalBookClassificationValuesGBUK]
+  FROM [ras_sas].[BI].[AppraisalBookClassificationValuesGBUK] with (nolock)
   WHERE 
  [MarketCode]='GBUK' and [AppraisalBookPublishDate]=@EffectiveDate
    AND (NOT(Categoryid IN (220,1948,21) OR CategoryName LIKE 'DO NOT USE%') OR [ClassificationId]=1)
   AND ModelId is null 
-  AND ModelYear Between 2007 And 2020"
+  AND ModelYear Between 2008 And 2022"
 ################################## 1.D Input last month apprciation and depreciation values #####################################
 
 Last_depr_UKload<-"
-Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-2, -1) AS date)
+Declare @EffectiveDate Date = CAST(DATEADD(MONTH, DATEDIFF(MONTH, 0, GETDATE())-1, -1) AS date)
 
 SELECT [ClassificationId]
       ,[FLVAppreciationPercentage]/100 AS Appreciation
       ,[FLVDepreciationPercentage]/100 AS Depreciation
-  FROM [ras_sas].[BI].[AppraisalBookSchedulesGBUK]
+  FROM [ras_sas].[BI].[AppraisalBookSchedulesGBUK] with (nolock)
   Where  [MarketCode]='GBUK' and [AppraisalBookPublishDate]=@EffectiveDate
    and ModelId is null AND [FLVAppreciationPercentage] IS NOT NULL "
 
 
 ################################ Classification - csm #########################################
 
-AllClass<-"
+AllClass_query<-"
 SELECT [ClassificationId]
       ,[CategoryId]
       ,[CategoryName]
@@ -346,7 +360,7 @@ SELECT [ClassificationId]
       ,[SubcategoryName]
       ,[MakeId]
       ,[MakeName]
-  FROM [ras_sas].[BI].[Classifications]
+  FROM [ras_sas].[BI].[Classifications] with (nolock)
   Where  Modelid is null
   Order By 
       [CategoryName]
@@ -356,7 +370,7 @@ SELECT [ClassificationId]
 
 
 ################################ Grouping #########################################
-ReportGrp<-
+ReportGrp_query<-
   "SET NOCOUNT ON
 DROP TABLE IF EXISTS #reptGrp
 SELECT Distinct
@@ -365,7 +379,7 @@ SELECT Distinct
       ,CASE WHEN [ReportGroup] LIKE '% Earth Moving' THEN 'Earth Moving' 
 	  WHEN ReportGroup in ('Aerial','Telehandlers') THEN 'Aerial' ELSE [ReportGroup] END AS [ReportGroup]
   INTO #reptGrp
-  FROM [ras_sas].[BI].[Subcategories]
+  FROM [ras_sas].[BI].[Subcategories] with (nolock)
   Where CategoryId Not In (220,	1948,	18,	4,	1949,	234,	21,	31,	2733,	2706,	2718,	2692,	2724,	2674,	2700,	2708)
   
 
@@ -373,3 +387,11 @@ DELETE #reptGrp
 WHERE [ReportGroup] ='Global' AND CategoryId in (15,29,362)
 
 SELECT * FROM #reptGrp Order By ReportGroup"
+
+
+UsageList_query<-"SET NOCOUNT ON
+SELECT  [CategoryId]
+      ,[SubcategoryId]   
+      ,[MeterCode]
+  FROM [ras_sas].[BI].[UsageAdjCoefficientsInProgressMKT] with (nolock)
+WHERE MarketCode = 'USNA'"

@@ -3,109 +3,23 @@
 ########################################## 15. PREPARE THE UPLOAD FILE #############################################
 ###################################################################################################################
 ###################################################################################################################
-if (CountryCode =='USA'){
-######################################################## Cat/Subcat Schedules #########################################################
-#### 13.A concatenate the columns
-FinalSchedules$concat_fmv<-paste(FinalSchedules$ClassificationId,"|","FMV","|",FinalSchedules$ModelYear,"|",FinalSchedules$limit_fmv,sep="")
-FinalSchedules$concat_flv<-paste(FinalSchedules$ClassificationId,"|","FLV","|",FinalSchedules$ModelYear,"|",FinalSchedules$limit_flv,sep="")
 
-concatfmv<-FinalSchedules %>%
-  select(concat_fmv)
-colnames(concatfmv)<-"ClassificationID|Type|Year|Schedule Value"
-
-concatflv<-FinalSchedules %>%
-  select(concat_flv)
-colnames(concatflv)<-"ClassificationID|Type|Year|Schedule Value"
-
-a<-FinalSchedules %>%
-  group_by(ClassificationId) %>%
-  summarise(n=n()) %>%
-  filter(n %in% c(10))
-
-DimRegular<-dim(FinalSchedules %>% group_by(ClassificationId) %>% summarise(n=n()))
-
-
-
-######################################################## Make Schedules #########################################################
-#### 13.B concatenate the columns
-Final_makeSched$concat_fmv<-paste(Final_makeSched$ClassificationId,"|","FMV","|",Final_makeSched$ModelYear,"|",Final_makeSched$limit_fmv,sep="")
-Final_makeSched$concat_flv<-paste(Final_makeSched$ClassificationId,"|","FLV","|",Final_makeSched$ModelYear,"|",Final_makeSched$limit_flv,sep="")
-
-
-concatfmv_Make<-Final_makeSched %>%
-  select(concat_fmv)
-colnames(concatfmv_Make)<-"ClassificationID|Type|Year|Schedule Value"
-
-concatflv_Make<-Final_makeSched %>%
-  select(concat_flv)
-colnames(concatflv_Make)<-"ClassificationID|Type|Year|Schedule Value"
-
-DimMake<-dim(Final_makeSched %>% group_by(ClassificationId) %>% summarise(n=n()))
-
-##################################################### Finalize upload file ##########################################################
-uploadTb<-rbind(concatfmv,concatfmv_Make,concatflv,concatflv_Make) 
-
-uploadTb2 <- as.data.frame(sapply(uploadTb,gsub,pattern = "V|App",replacement = "VApp",fixed=T))
-uploadTb3 <- as.data.frame(sapply(uploadTb2,gsub,pattern = "V|Dep",replacement = "VDep",fixed=T))
-
-
-#### 13.D Write the upload file in the folder
-write.table(uploadTb3,paste(Sys.Date(),CountryCode,'ScheduleImport_VL.txt'),row.names=FALSE,quote=FALSE)
-write.csv(uploadTb3,paste(Sys.Date(),CountryCode,'ScheduleImport_VL.csv'),row.names=FALSE,quote=FALSE)
-} else{
-  
-
-schedule_form<-rbind(rbind(Final_makeSched %>% select(ClassificationId,ModelYear,limit_fmv),MoMSchedules %>% select(ClassificationId,ModelYear,limit_fmv)) %>%
-                       mutate(ScheduleType = 'FMV') %>% rename(CostPercent = limit_fmv,ClassificationID = ClassificationId),
-                     rbind(Final_makeSched %>% select(ClassificationId,ModelYear,limit_flv),MoMSchedules %>% select(ClassificationId,ModelYear,limit_flv)) %>%
-                       mutate(ScheduleType = 'FLV') %>% rename(CostPercent = limit_flv,ClassificationID = ClassificationId)) %>%
+#### format the output file for regular and make schedules
+schedule_form<-rbind(full_sched_results %>% mutate(ScheduleType = 'FMV') %>% rename(CostPercent = limit_fmv)%>% select(-limit_flv),
+                     full_sched_results %>% mutate(ScheduleType = 'FLV') %>% rename(CostPercent = limit_flv)%>% select(-limit_fmv)) %>%
   filter(ModelYear>=botyear & ModelYear<=topyear) %>%
-  mutate(MarketCode = 'GBUK', AppreciationPercentage='', DepreciationPercentage='') %>%
+  mutate(MarketCode = market, AppreciationPercentage='', DepreciationPercentage='') %>%
+  rename(ClassificationID = ClassificationId)%>%
   select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
 
-depapp.make<-Final_makeSched %>% select(-limit_flv) %>% filter(ModelYear %in% c('App','Dep')) %>% rename(rate = limit_fmv)
+#### format the output file for depreciation and appreciation rate
+dep<-spread(full_depr_results,ModelYear,limit_fmv) 
+dep_trans<-format_depr(dep,'FMV')
 
-dep<-spread(rbind(applydep %>% select(ClassificationId,ModelYear,rate),depapp.make),ModelYear,rate) %>%
-  rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
-  mutate(MarketCode = 'GBUK', ScheduleType ='FMV', ModelYear ='', CostPercent='') %>%
-  select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
+app<-spread(full_depr_results,ModelYear,limit_fmv) 
+app_trans<-format_depr(app,'FLV')  
 
-app<-spread(rbind(applydep %>% select(ClassificationId,ModelYear,rate),depapp.make),ModelYear,rate) %>%
-  rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
-  mutate(MarketCode = 'GBUK', ScheduleType ='FLV', ModelYear ='', CostPercent='') %>%
-  select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
-
-
-### global
-
-global_out<- rbind(MoMSched.global %>% select(ClassificationId,ModelYear,limit_fmv ) %>%
-                     mutate(ScheduleType = 'FMV') %>% rename(CostPercent = limit_fmv ,ClassificationID = ClassificationId),
-                   MoMSched.global %>% select(ClassificationId,ModelYear,limit_flv ) %>%
-                     mutate(ScheduleType = 'FLV') %>% rename(CostPercent = limit_flv ,ClassificationID = ClassificationId)) %>%
-  filter(ModelYear>=botyear & ModelYear<=topyear) %>%
-  mutate(MarketCode = 'GBUK', AppreciationPercentage='', DepreciationPercentage='') %>%
-  select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
-
-
-
-dep_global<-spread(MoMSched.global %>% select(ClassificationId,ModelYear,limit_fmv ),ModelYear,limit_fmv ) %>%
-  rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
-  mutate(MarketCode = 'GBUK', ScheduleType ='FMV', ModelYear ='', CostPercent='') %>%
-  select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
-
-
-app_global<-spread(MoMSched.global %>% select(ClassificationId,ModelYear,limit_flv ),ModelYear,limit_flv) %>%
-  rename(AppreciationPercentage = App, DepreciationPercentage = Dep, ClassificationID = ClassificationId) %>%
-  mutate(MarketCode = 'GBUK', ScheduleType ='FLV', ModelYear ='', CostPercent='') %>%
-  select(MarketCode, ClassificationID,	ScheduleType,	ModelYear, CostPercent, AppreciationPercentage, DepreciationPercentage)
-
-excel_out <- rbind(global_out,dep_global,app_global,schedule_form,dep,app) %>% arrange(MarketCode, ClassificationID,ScheduleType,	ModelYear)
-
-
-write.csv(excel_out,paste('ClassificationModifySchedule',format(Sys.time(),format='%Y%m%d%H%M'),'VL.csv',sep=''),row.names = F)
-
-  
-}
+excel_out <- rbind(schedule_form,dep_trans,app_trans) %>% arrange(MarketCode, ClassificationID,ScheduleType,	ModelYear)
 
 
 ###################################################################################################################
@@ -113,17 +27,6 @@ write.csv(excel_out,paste('ClassificationModifySchedule',format(Sys.time(),forma
 ################################################# 14. PLOTS #######################################################
 ###################################################################################################################
 ###################################################################################################################
-
-# split sale data to auction and retail -- Test Data
-#SaleData_all=subset(Datainput,as.Date(Datainput$EffectiveDate)>publishDate)
-#SaleDtAuc_all<-subset(SaleData_all,SaleData_all$SaleType=="Auction" & YearInuse=='Outputyr')
-#SaleDtRet_all<-subset(SaleData_all,SaleData_all$SaleType=="Retail" & YearInuse=='Outputyr')
-####### Test Data #######
-#Auc_testUse_plot<-SaleDtAuc_all %>%
-#  select(Schedule,Age,ModelYear,SaleAB)
-
-#Ret_testUse_plot<-SaleDtRet_all %>%
-#  select(Schedule,Age,ModelYear,SaleAB)
 
 #################################### 14.A Cat/Subcat Schedules #############################################
 
@@ -165,7 +68,7 @@ Deprline<-deprCurve %>% mutate(Age= year(publishDate)-ModelYear + (month(publish
 
 #SchedFullList_plot = SchedFullList %>% filter(Schedule %in% c('Telehandlers Small JLG USA'))
 SchedFullList_plot = SchedFullList %>% filter(!str_detect(Schedule,'SubcatGrp'))
-#SchedFullList_plot = SchedFullList %>% filter(Schedule=='Containers Tanks Boxes RbA Trailers Grp USA')
+#SchedFullList_plot = SchedFullList %>% filter(str_detect(Schedule,'Crane'))
 N_plot=dim(SchedFullList_plot)[1]
 for (j in 1:N_plot){
 
@@ -198,7 +101,7 @@ for (j in 1:N_plot){
   xaxis = c(-.5,15)
   yaxis = c(0,2)
 
-  yaxis_name='SP /AB Cost'
+  yaxis_name='SalePrice  / ReplacementCost'
   ##Auction Plots
   # lines
   draw_Sched_Auc<-xyplot(limit_flv ~ Age, NewMonth_Sched,ylim=yaxis,xlim=xaxis,scales = list(y=list(tick.number=10),x=list(tick.number=16))
