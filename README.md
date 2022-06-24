@@ -22,16 +22,6 @@ CountryCode = 'USA'
 ```
 3) Set your local file path for A) where the scripts are B) where the management file is C) where the plots folder should be created at
 ```R
-## file path where management file is
-input_path = "~/Project/ManagementFiles"
-## file path where plots and files export to
-file_path = "~/Project/Schedulescopy/doc"
-## file path where script are
-scripts_path = "~/Project/Schedulescopy/script"
-```
-4) Make sure the management file is up to date
-```R
-excelfile = '20201022 SchedulesManagement.xlsx'
-```
+
 
 You are GOOD TO EXECUTE the execute.r file. You will expcet to see 1 .txt, 1 .csv and 3 .xlsx files. The .txt file is the one to upload. 
