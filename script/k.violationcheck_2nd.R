@@ -16,8 +16,8 @@ if(CountryCode == "USA"){
 channelviolation<-comb_make_model %>%
   arrange(ClassificationId,ModelYear)%>% 
   mutate(rate = limit_fmv/limit_flv)%>%
-  filter (rate < 1) %>%
-  mutate(schedule = ifelse(ModelYear<=topyear-chanyr*2,limit_flv*(1+capChannel/4),limit_fmv/(1+capChannel/4))) %>%
+  filter (rate <= 1) %>%
+  mutate(schedule = ifelse(ModelYear<=topyear-chanyr*2,limit_flv*(1+capChannel),limit_fmv/(1+capChannel))) %>%
   select(ClassificationId,ModelYear,schedule)
 
 
@@ -30,7 +30,7 @@ fix_channelcheck<-merge(comb_make_model,channelviolation,by=c("ClassificationId"
 ########### return the violated ones
 fix_channelcheck %>%
   mutate(rate = limit_fmv/limit_flv) %>%
-  filter (rate < 1) 
+  filter (rate <= 1.01) 
 
 
 ### check the violation between years by rule of .02

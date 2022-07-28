@@ -49,7 +49,7 @@ file_path = "~/Project/Schedules/doc"
 scripts_path = "~/Project/Schedules/script"
 
 ## management file
-excelfile = '20220617 SchedulesManagement.xlsx'
+excelfile = '20220713 SchedulesManagement.xlsx'
 
 ## create folders to save the plots
 setwd(file_path)  
@@ -66,7 +66,7 @@ eval(runa)
 starttime_dtload<-Sys.time()
 ## run sql queries
 if (CountryCode == 'USA'){
-       setwd(scripts_path) 
+       setwd(scripts_path) ``
        runb<-parse('b.sqlQueries_US.r')
        eval(runb)
        publishDate <- Sys.Date() - days(day(Sys.Date()))
@@ -197,7 +197,7 @@ if (CountryCode == 'USA'){
   eval(runl)
   print('Plots generation is done')
   setwd(file_path)  
-  write.csv(excel_out,paste('ClassificationModifySchedule',CountryCode,format(Sys.time(),format='%Y%m%d%H%M'),'VL.csv',sep=''),row.names = F)
+  #write.csv(excel_out,paste('ClassificationModifySchedule',CountryCode,format(Sys.time(),format='%Y%m%d%H%M'),'VL.csv',sep=''),row.names = F)
   write.xlsx2(as.data.frame(joinMakeOut),file = paste(publishDate,CountryCode,"Share.xlsx"), sheetName = 'MakeAdjusters',row.names = F)
   write.xlsx2(as.data.frame(MakeSFcalc_Sched),file = paste(publishDate,CountryCode,"Share.xlsx"), sheetName = 'MakeAdjCalc',append=T,row.names = F)
   write.xlsx2(as.data.frame(list_reductfact),file = paste(publishDate,CountryCode,"Share.xlsx"), sheetName = 'ListingReduction',append=T,row.names = F)
@@ -226,7 +226,7 @@ if (CountryCode == 'USA'){
   setwd(file_path)  
   eval(runl)
   print('Plots generation is done')
-  write.csv(excel_out,paste('ClassificationModifySchedule',format(Sys.time(),format='%Y%m%d%H%M'),'VL.csv',sep=''),row.names = F)
+  #write.csv(excel_out,paste('ClassificationModifySchedule',format(Sys.time(),format='%Y%m%d%H%M'),'VL.csv',sep=''),row.names = F)
   write.xlsx2(as.data.frame(joinMakeOut),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjusters',row.names = F)
   write.xlsx2(as.data.frame(MakeSFcalc_Sched),file = paste(publishDate,CountryCode," Share.xlsx"), sheetName = 'MakeAdjCalc',append=T,row.names = F)
   write.xlsx(regressionCoef,file = paste(publishDate, 'Coefficients.xlsx'), sheetName='Sheet1',row.names=F)
@@ -236,39 +236,19 @@ end_time_r <- Sys.time()
 end_time_r - start_time_r
 
 
+## prepare the final import files (good file and file w/ failures)
+yearcheck_list = fix_Yearcheck %>% filter(retFlag=='flag' |aucFlag=='flag') %>% select (ClassificationId)
+chancheck_list = fix_channelcheck %>%mutate(rate = limit_fmv/limit_flv) %>% filter (rate < 1) %>% select (ClassificationId)
+apprcheck_list = full_depr_results %>%filter(!limit_fmv>0)%>% select (ClassificationId)
 
-excel_out=read.csv("ClassificationModifyScheduleUSA202206012224VL.csv")
+failure_rows = rbind(yearcheck_list,chancheck_list,apprcheck_list)
 
-excel_out[is.na(excel_out)] <- ""
-####### Value Fixed ######
-# make
-fixclassId = 118202#101030#101028#86216#393
-excel_out %>% filter(ClassificationID %in% fixclassId)
-fixyear = 2019
-fixtype = "FLV"
-
-AllClass %>% filter(ClassificationId == fixclassId)
-correct_value =  0.403369032011596    
-excel_out <- excel_out  %>%
-  mutate(CostPercent = ifelse(ClassificationID %in% fixclassId & ModelYear == fixyear & ScheduleType == fixtype,
-                              correct_value, CostPercent))
-excel_out %>% filter(ClassificationID %in% fixclassId)
-
-# appreciation 
-fixclassId = 92833
-excel_out %>% filter(ClassificationID == fixclassId)
-fixyear = ''
-fixtype = "FLV"
-correct_value = 0.03
-excel_out <- excel_out  %>%
-  mutate(AppreciationPercentage = ifelse(AppreciationPercentage<0 & ModelYear == fixyear,
-                              correct_value, AppreciationPercentage))
-excel_out %>% filter(ClassificationID == fixclassId)
-
-
-upload_df = excel_out %>%filter(ClassificationID==92989)
-###### upload the file to google bucket
-setwd(file_path)  
-eval(runk)
-prob=fix_Yearcheck %>% filter(retFlag=='flag' |aucFlag=='flag')
-upload_df = excel_out %>% filter(!ClassificationID %in% prob$ClassificationId)
+file_B <- merge(excel_out,failure_rows,how='inner',by.x = "ClassificationID",by.y = "ClassificationId")
+file_A = anti_join(excel_out,failure_rows,by = c("ClassificationID" = "ClassificationId"))        
+  
+if(dim(file_A %>%filter(ClassificationID==1))[1]==22){
+  write.csv(file_A,paste('ClassificationModifySchedule',CountryCode,format(Sys.time(),format='%Y%m%d%H%M'),'VL_A.csv',sep=''),row.names = F)
+  write.csv(file_B,paste('ClassificationModifySchedule',CountryCode,format(Sys.time(),format='%Y%m%d%H%M'),'VL_B.csv',sep=''),row.names = F)
+}else{
+  print("Missing Global")
+}
